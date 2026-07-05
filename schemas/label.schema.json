@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/label.schema.json",
+  "title": "LiDAR Label Tool frame label",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "frame_id",
+    "revision",
+    "frame_status",
+    "saved_at_utc",
+    "point_cloud_paths",
+    "reference_frame",
+    "coordinate_system",
+    "provenance",
+    "calibration_state",
+    "objects"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "dataset_id": { "type": "string", "minLength": 1 },
+    "frame_id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "frame_status": {
+      "enum": ["unvisited", "in_progress", "reviewed", "skipped"]
+    },
+    "saved_at_utc": { "type": "string", "format": "date-time" },
+    "point_cloud_paths": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        ]
+      }
+    },
+    "reference_frame": { "type": "string", "minLength": 1 },
+    "point_cloud_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Legacy single-LiDAR path; read for compatibility but do not write in new labels."
+    },
+    "image_path": { "type": ["string", "null"] },
+    "image_paths": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "calib_path": { "type": ["string", "null"] },
+    "calibration_path": { "type": ["string", "null"] },
+    "coordinate_system": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "const": "forward" },
+        "y": { "const": "left" },
+        "z": { "const": "up" }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source_format", "source_paths", "source_fingerprints"],
+      "properties": {
+        "source_format": { "type": "string", "minLength": 1 },
+        "source_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source_fingerprints": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "calibration_state": {
+      "type": "object",
+      "required": ["mode", "fingerprint", "sensor_status"],
+      "properties": {
+        "mode": { "enum": ["auto", "on", "off"] },
+        "fingerprint": { "type": ["string", "null"] },
+        "sensor_status": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["not_required", "applied", "adjusted", "missing", "invalid", "disabled"]
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "objects": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/labeledObject" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "labeledObject": {
+      "type": "object",
+      "required": ["id", "class_name", "box3d"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "class_name": { "type": "string", "minLength": 1 },
+        "box3d": { "$ref": "#/$defs/box3d" },
+        "attributes": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "box3d": {
+      "type": "object",
+      "required": ["x", "y", "z", "length", "width", "height", "yaw"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "length": { "type": "number", "exclusiveMinimum": 0 },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "yaw": { "type": "number", "minimum": -3.141592653589793, "exclusiveMaximum": 3.141592653589793 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

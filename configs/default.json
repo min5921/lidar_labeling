@@ -1,0 +1,94 @@
+{
+  "classes": [
+    {
+      "name": "Car",
+      "color": "#00D084",
+      "default_size": [4.2, 1.8, 1.6],
+      "shortcut": "1"
+    },
+    {
+      "name": "Pedestrian",
+      "color": "#FFB020",
+      "default_size": [0.8, 0.8, 1.7],
+      "shortcut": "2"
+    },
+    {
+      "name": "Cyclist",
+      "color": "#4C9AFF",
+      "default_size": [1.8, 0.8, 1.6],
+      "shortcut": "3"
+    },
+    {
+      "name": "Sign",
+      "color": "#C77DFF",
+      "default_size": [0.3, 0.1, 0.6],
+      "shortcut": "4"
+    },
+    {
+      "name": "Unknown",
+      "color": "#A0A0A0",
+      "default_size": [1.0, 1.0, 1.0]
+    }
+  ],
+  "source_class_mappings": {
+    "TYPE_VEHICLE": "Car",
+    "TYPE_PEDESTRIAN": "Pedestrian",
+    "TYPE_CYCLIST": "Cyclist",
+    "TYPE_SIGN": "Sign",
+    "TYPE_UNKNOWN": "Unknown"
+  },
+  "point_cloud": {
+    "format": "manifest",
+    "max_render_points": 250000,
+    "intensity_normalization": "auto"
+  },
+  "dataset": {
+    "layout": "auto",
+    "synchronization": "manifest_or_exact_stem",
+    "timestamp_tolerance_ms": 50.0
+  },
+  "calibration": {
+    "mode": "auto",
+    "reference_frame": "vehicle",
+    "primary_lidar": null,
+    "merge_lidars_when_enabled": true,
+    "manual_adjustment_enabled": true
+  },
+  "editing": {
+    "move_step_m": 0.1,
+    "fine_move_step_m": 0.02,
+    "resize_step_m": 0.1,
+    "yaw_step_deg": 5.0,
+    "carry_created_boxes_forward": true,
+    "autosave_on_frame_change": true,
+    "recovery_interval_s": 30,
+    "history_limit": 100
+  },
+  "workflow": {
+    "session_lock": true,
+    "detect_external_changes": true,
+    "default_frame_status": "unvisited"
+  },
+  "performance": {
+    "prefetch_frames": 1,
+    "max_cache_mb": 512,
+    "render_quality": "auto"
+  },
+  "views": {
+    "side_view": "xz",
+    "point_size": 2.0,
+    "box_line_width": 2.0,
+    "point_color_mode": "sensor",
+    "uniform_point_color": "#E8E8E8",
+    "camera_view_mode": "single_select",
+    "preserve_view_across_frames": true,
+    "auto_focus_selection": true,
+    "show_object_labels": true,
+    "show_source_camera_labels": false,
+    "show_projected_lidar_labels": false,
+    "show_live_projection": true,
+    "show_bev_auxiliary": false,
+    "show_side_auxiliary": false,
+    "object_detail_margin_m": 3.0
+  }
+}

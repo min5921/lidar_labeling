@@ -1,0 +1,81 @@
+# Python bytecode / package metadata
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test, coverage, type-check and lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build and portable distribution outputs
+build/
+dist/
+release/
+.nuitka-cache/
+
+# GUI smoke-test screenshots and generated reports
+artifacts/
+
+# Runtime logs, crash dumps and local application state
+*.log
+*.dmp
+*.stackdump
+.lidar_label_tool/
+**/.recovery/
+**/.lidar_label_tool.lock
+
+# Local environment variables and user-only configuration
+.env
+.env.*
+!.env.example
+configs/local.json
+configs/*.local.json
+
+# Working annotations created inside a dataset. Source labels are not matched.
+**/annotations/lidar_label_tool/
+
+# Large/private datasets must stay outside version control.
+dataset/
+datasets/
+
+# User-provided local data. Keep only documentation and an optional placeholder.
+local_data/*
+!local_data/README.md
+!local_data/incoming/
+local_data/incoming/*
+!local_data/incoming/.gitkeep
+
+# Local Codex/agent metadata; repository instructions remain in AGENTS.md.
+.agents/
+.codex/
+
+# Editors and IDEs
+.idea/
+.vscode/
+.vs/
+.fleet/
+*.swp
+*.swo
+*~
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/

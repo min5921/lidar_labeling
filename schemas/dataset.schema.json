@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/dataset.schema.json",
+  "title": "Device-centric dataset manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "layout",
+    "reference_frame",
+    "primary_lidar",
+    "sensors",
+    "synchronization"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "dataset_id": { "type": "string", "minLength": 1 },
+    "layout": { "const": "device_centric" },
+    "reference_frame": { "type": "string", "minLength": 1 },
+    "primary_lidar": { "type": "string", "minLength": 1 },
+    "sensors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sensor" }
+    },
+    "synchronization": { "$ref": "#/$defs/synchronization" },
+    "calibration_path": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sensor": {
+      "type": "object",
+      "required": ["id", "type", "coordinate_frame", "data_patterns"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["lidar", "camera"] },
+        "coordinate_frame": { "type": "string", "minLength": 1 },
+        "data_patterns": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        },
+        "point_columns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 3
+        },
+        "point_dtype": { "enum": ["float32"] },
+        "byte_order": { "enum": ["little-endian", "big-endian"] },
+        "timestamp_path": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "lidar" } } },
+          "then": { "required": ["point_columns", "point_dtype", "byte_order"] }
+        }
+      ]
+    },
+    "synchronization": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["index", "exact_stem", "timestamp_nearest"] },
+        "index_path": { "type": "string", "minLength": 1 },
+        "tolerance_ms": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

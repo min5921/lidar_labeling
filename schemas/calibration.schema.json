@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/calibration.schema.json",
+  "title": "Multi-sensor calibration",
+  "type": "object",
+  "required": ["schema_version", "reference_frame", "lidars"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "reference_frame": { "type": "string", "minLength": 1 },
+    "lidars": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/lidarCalibration" }
+    },
+    "cameras": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/cameraCalibration" }
+    },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "row3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "row4": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "matrix3": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row3" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "matrix4": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row4" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "lidarCalibration": {
+      "type": "object",
+      "required": ["T_reference_sensor"],
+      "properties": {
+        "T_reference_sensor": { "$ref": "#/$defs/matrix4" },
+        "correction_delta": { "$ref": "#/$defs/matrix4" },
+        "time_offset_ns": { "type": "integer" },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "cameraCalibration": {
+      "type": "object",
+      "required": ["intrinsic", "T_camera_reference", "image_size"],
+      "properties": {
+        "intrinsic": { "$ref": "#/$defs/matrix3" },
+        "T_camera_reference": { "$ref": "#/$defs/matrix4" },
+        "correction_delta": { "$ref": "#/$defs/matrix4" },
+        "image_size": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "integer", "minimum": 1 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "distortion_model": {
+          "enum": ["none", "brown_conrady", "fisheye"]
+        },
+        "distortion_coefficients": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "time_offset_ns": { "type": "integer" },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,6 @@
+from lidar_label_tool.app.cli import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
