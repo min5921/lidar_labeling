@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.calibration.waymo_camera import (
     CameraCalibration,
+    ProjectedWireframe,
     camera_synced_projection_box,
     project_box_wireframe,
 )
@@ -47,6 +48,7 @@ from lidar_label_tool.io.labels.json_repository import LabelConflictError, Label
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
 from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
+from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
 from lidar_label_tool.ui.views import (
     BevView,
     CameraImageView,
@@ -134,8 +136,13 @@ class MainWindow(QMainWindow):
         self.side_view = SideView()
         self.view_3d.objectSelected.connect(self._select_object_id)
         self.bev_view.objectSelected.connect(self._select_object_id)
+        self.bev_view.boxMoved.connect(self._move_box_from_bev)
+        self.bev_view.boxResized.connect(self._resize_box_from_bev)
+        self.bev_view.boxRotated.connect(self._rotate_box_from_bev)
         self.bev_view.createBoxRequested.connect(self._create_box_at)
         self.bev_view.createBoxDragged.connect(self._create_box_from_drag)
+        self.side_view.boxVerticalMoved.connect(self._move_box_vertical_from_side)
+        self.side_view.boxHeightResized.connect(self._resize_box_height_from_side)
 
         right_views = QSplitter(Qt.Orientation.Vertical)
         right_views.addWidget(self._framed("카메라", self.image_view))
@@ -220,41 +227,17 @@ class MainWindow(QMainWindow):
         nav_layout.addWidget(self.working_path_label)
         layout.addWidget(navigation)
 
-        camera_group = QGroupBox("카메라 / 레이어")
-        camera_layout = QVBoxLayout(camera_group)
-        self.camera_combo = QComboBox()
+        self.camera_panel = CameraPanel(self.config["views"])
+        self.camera_combo = self.camera_panel.camera_combo
+        self.camera_labels_check = self.camera_panel.camera_labels_check
+        self.projected_labels_check = self.camera_panel.projected_labels_check
+        self.live_projection_check = self.camera_panel.live_projection_check
+        self.projection_status = self.camera_panel.projection_status
         self.camera_combo.currentTextChanged.connect(self._render_camera)
-        camera_layout.addWidget(self.camera_combo)
-        self.camera_labels_check = QCheckBox("원본 카메라 2D")
-        self.camera_labels_check.setChecked(
-            bool(self.config["views"]["show_source_camera_labels"])
-        )
         self.camera_labels_check.toggled.connect(self._render_camera)
-        camera_layout.addWidget(self.camera_labels_check)
-        self.projected_labels_check = QCheckBox("원본 LiDAR 투영 2D")
-        self.projected_labels_check.setChecked(
-            bool(self.config["views"]["show_projected_lidar_labels"])
-        )
         self.projected_labels_check.toggled.connect(self._render_camera)
-        camera_layout.addWidget(self.projected_labels_check)
-        self.live_projection_check = QCheckBox("현재 3D 박스 실시간 투영")
-        self.live_projection_check.setChecked(bool(self.config["views"]["show_live_projection"]))
         self.live_projection_check.toggled.connect(self._render_camera)
-        camera_layout.addWidget(self.live_projection_check)
-        camera_legend = QLabel(
-            '<span style="color:#ffb020">■</span> Camera GT: 독립 2D 라벨<br>'
-            '<span style="color:#00dcff">■</span> Source projected: 원본 참조<br>'
-            '<span style="color:#28eb6e">■</span> Live 3D: 현재 작업 박스 투영'
-        )
-        camera_legend.setToolTip(
-            "두 레이어는 객체 ID와 생성 시점이 달라 완전히 겹치지 않을 수 있습니다."
-        )
-        camera_layout.addWidget(camera_legend)
-        self.projection_status = QLabel()
-        self.projection_status.setWordWrap(True)
-        self.projection_status.setStyleSheet("color:#6b7280; font-size:10px;")
-        camera_layout.addWidget(self.projection_status)
-        layout.addWidget(camera_group)
+        layout.addWidget(self.camera_panel)
 
         side_group = QGroupBox("보조 뷰")
         side_layout = QVBoxLayout(side_group)
@@ -323,7 +306,9 @@ class MainWindow(QMainWindow):
         create_group = QGroupBox("새 박스 생성")
         create_layout = QFormLayout(create_group)
         self.new_class_combo = QComboBox()
-        self.new_class_combo.addItems(str(item["name"]) for item in self.config["classes"])
+        self.new_class_combo.addItems(
+            [str(item["name"]) for item in self.config["classes"]]
+        )
         create_layout.addRow("클래스", self.new_class_combo)
         self.create_button = QPushButton("새 박스 만들기 · BEV에서 위치 클릭")
         self.create_button.setCheckable(True)
@@ -359,49 +344,24 @@ class MainWindow(QMainWindow):
         object_layout.addWidget(self.object_details)
         layout.addWidget(object_group)
 
-        editor_group = QGroupBox("3D 박스 편집")
-        editor_layout = QFormLayout(editor_group)
-        self.class_combo = QComboBox()
-        self.class_combo.addItems(str(item["name"]) for item in self.config["classes"])
+        self.object_editor_panel = ObjectEditorPanel(
+            str(item["name"]) for item in self.config["classes"]
+        )
+        self.class_combo = self.object_editor_panel.class_combo
+        self.box_spins = self.object_editor_panel.box_spins
+        self.delete_button = self.object_editor_panel.delete_button
+        self.undo_button = self.object_editor_panel.undo_button
+        self.redo_button = self.object_editor_panel.redo_button
+        self.save_button = self.object_editor_panel.save_button
+        self.edit_status = self.object_editor_panel.edit_status
         self.class_combo.currentTextChanged.connect(self._commit_editor)
-        editor_layout.addRow("클래스", self.class_combo)
-        self.box_spins: dict[str, QDoubleSpinBox] = {}
-        specifications = {
-            "x": (-1000.0, 1000.0, 0.1, 3),
-            "y": (-1000.0, 1000.0, 0.1, 3),
-            "z": (-1000.0, 1000.0, 0.1, 3),
-            "length": (0.01, 100.0, 0.1, 3),
-            "width": (0.01, 100.0, 0.1, 3),
-            "height": (0.01, 100.0, 0.1, 3),
-            "yaw_deg": (-180.0, 180.0, 1.0, 2),
-        }
-        for name, (minimum, maximum, step, decimals) in specifications.items():
-            spin = QDoubleSpinBox()
-            spin.setRange(minimum, maximum)
-            spin.setSingleStep(step)
-            spin.setDecimals(decimals)
-            spin.setKeyboardTracking(False)
+        for spin in self.box_spins.values():
             spin.editingFinished.connect(self._commit_editor)
-            self.box_spins[name] = spin
-            editor_layout.addRow("Yaw (도)" if name == "yaw_deg" else name, spin)
-        self.delete_button = QPushButton("삭제")
         self.delete_button.clicked.connect(self._delete_selected)
-        editor_layout.addRow(self.delete_button)
-        history_row = QHBoxLayout()
-        self.undo_button = QPushButton("Undo")
         self.undo_button.clicked.connect(self._undo)
-        self.redo_button = QPushButton("Redo")
         self.redo_button.clicked.connect(self._redo)
-        self.save_button = QPushButton("저장")
         self.save_button.clicked.connect(self._save_working_label)
-        history_row.addWidget(self.undo_button)
-        history_row.addWidget(self.redo_button)
-        history_row.addWidget(self.save_button)
-        editor_layout.addRow(history_row)
-        self.edit_status = QLabel("변경 없음")
-        self.edit_status.setWordWrap(True)
-        editor_layout.addRow(self.edit_status)
-        layout.addWidget(editor_group)
+        layout.addWidget(self.object_editor_panel)
 
         quick_help = QGroupBox("빠른 사용법")
         quick_help_layout = QVBoxLayout(quick_help)
@@ -558,52 +518,99 @@ class MainWindow(QMainWindow):
         self._populate_objects(current_label.objects)
         if carried_selection is not None:
             self._select_object_id(carried_selection)
-        self._update_sensor_status(current_label)
+        self._update_sensor_status(payload)
         self._render_all()
         self._update_editor()
         self._update_edit_state()
         point_count = sum(
             cloud.point_count for clouds in payload.clouds.values() for cloud in clouds
         )
-        self.status_message.setText(
+        status_text = (
             f"{payload.source.frame_id} · {point_count:,} points · "
             f"{len(current_label.objects)} objects"
             + (f" · 새 박스 {len(carried_ids)}개 이어받음" if carried_ids else "")
         )
+        warning_messages = [
+            f"{name}: {message}" for name, message in payload.sensor_errors.items()
+        ] + [
+            f"{name} layer: {message}"
+            for name, message in payload.reference_layer_errors.items()
+        ]
+        if warning_messages:
+            status_text += f" · ⚠ 로드 경고 {len(warning_messages)}개"
+        self.status_message.setText(status_text)
+        self.status_message.setToolTip("\n".join(warning_messages))
+        self._update_calibration_badge(payload)
+
+    def _source_sensor_status(self, payload: FrameLoadPayload) -> Mapping[str, Any]:
+        source_status = payload.source.metadata.get("sensor_status", {})
+        if isinstance(source_status, Mapping) and source_status:
+            return source_status
+        label_status = payload.label.calibration_state.get("sensor_status", {})
+        return label_status if isinstance(label_status, Mapping) else {}
+
+    def _update_calibration_badge(self, payload: FrameLoadPayload) -> None:
+        statuses = self._source_sensor_status(payload)
+        not_required = [
+            sensor for sensor, status in statuses.items() if status == "not_required"
+        ]
+        applied = [sensor for sensor, status in statuses.items() if status == "applied"]
+        issues = [
+            f"{sensor} {str(status).title()}"
+            for sensor, status in statuses.items()
+            if status in {"missing", "invalid", "disabled", "unknown"}
+        ]
+        if applied:
+            lidar_status = f"Applied ({', '.join(applied)})"
+        elif not_required:
+            lidar_status = f"불필요 ({', '.join(not_required)} · {self.index.reference_frame})"
+        else:
+            lidar_status = "사용 가능 센서 없음"
+        if issues:
+            lidar_status += f" · 센서 문제: {', '.join(issues)}"
+        if payload.sensor_errors:
+            failed_sensors = sorted({name.split(":", 1)[0] for name in payload.sensor_errors})
+            lidar_status += f" · Load failed: {', '.join(failed_sensors)}"
         camera_status = (
             "camera projection: 사용 가능"
             if self.camera_calibrations
             else "camera projection: 없음"
         )
-        sensor_status = payload.label.calibration_state.get("sensor_status", {})
-        applied = [
-            sensor for sensor, status in sensor_status.items() if status == "applied"
-        ] if isinstance(sensor_status, Mapping) else []
-        if applied:
-            self.calibration_badge.setText(
-                f"LiDAR calibration: Applied ({', '.join(applied)}) · {camera_status}"
-            )
-        elif payload.source.point_spec.source_frame == self.index.reference_frame:
-            self.calibration_badge.setText(
-                f"LiDAR calibration: 불필요 ({self.index.reference_frame} frame) · "
-                f"{camera_status}"
-            )
-        else:
-            self.calibration_badge.setText(f"LiDAR calibration: 확인 필요 · {camera_status}")
+        self.calibration_badge.setText(
+            f"LiDAR calibration: {lidar_status} · {camera_status}"
+        )
 
-    def _update_sensor_status(self, label: FrameLabel) -> None:
-        raw_status = label.calibration_state.get("sensor_status", {})
-        statuses = raw_status if isinstance(raw_status, Mapping) else {}
+    def _update_sensor_status(self, payload: FrameLoadPayload) -> None:
+        statuses = self._source_sensor_status(payload)
         display = {
             "not_required": "Not required",
             "applied": "Applied",
             "missing": "Missing",
             "invalid": "Invalid",
             "disabled": "Disabled",
+            "load_failed": "Load failed",
+            "unknown": "Unknown",
         }
         for sensor, check in self.sensor_checks.items():
-            status = str(statuses.get(sensor, "unknown"))
-            check.setText(f"{sensor} · {display.get(status, status)}")
+            errors = {
+                name: message
+                for name, message in payload.sensor_errors.items()
+                if name.split(":", 1)[0] == sensor
+            }
+            available = bool(payload.clouds.get(sensor))
+            status = "load_failed" if errors else str(statuses.get(sensor, "unknown"))
+            suffix = " (일부 return 사용 가능)" if errors and available else ""
+            check.setText(f"{sensor} · {display.get(status, status)}{suffix}")
+            check.setEnabled(available)
+            check.setToolTip(
+                "\n".join(f"{name}: {message}" for name, message in errors.items())
+                if errors
+                else f"Calibration state: {display.get(status, status)}"
+            )
+            check.setStyleSheet(
+                "color:#b45309;" if status in {"missing", "invalid", "disabled", "load_failed"}
+                else ""
+            )
 
     def _show_load_error(self, request: int, frame_id: str, message: str) -> None:
         if request != self.request_generation:
@@ -756,7 +763,7 @@ class MainWindow(QMainWindow):
             if self.projected_labels_check.isChecked()
             else ()
         )
-        live_wireframes = ()
+        live_wireframes: tuple[ProjectedWireframe, ...] = ()
         calibration = self.camera_calibrations.get(camera)
         if self.live_projection_check.isChecked() and calibration is not None:
             label = self._current_label()
@@ -853,6 +860,12 @@ class MainWindow(QMainWindow):
         if self.payload is not None and (show_bev or show_side):
             self._render_clouds()
             self._render_boxes_only()
+            selected = self._selected_object()
+            if selected is not None and self.auto_focus_check.isChecked():
+                if show_bev:
+                    self.bev_view.focus_on_box(selected.box3d)
+                if show_side:
+                    self.side_view.focus_on_box(selected.box3d)
 
     def _change_point_display(self, *_: Any) -> None:
         uniform = self.point_color_combo.currentData() == "uniform"
@@ -984,6 +997,40 @@ class MainWindow(QMainWindow):
 
     def _create_box_at(self, x: float, y: float) -> None:
         self._create_box(x, y)
+
+    def _move_box_from_bev(self, object_id: str, x: float, y: float) -> None:
+        self._update_object_box(object_id, x=x, y=y)
+
+    def _resize_box_from_bev(
+        self, object_id: str, x: float, y: float, length: float, width: float
+    ) -> None:
+        self._update_object_box(
+            object_id, x=x, y=y, length=length, width=width
+        )
+
+    def _rotate_box_from_bev(self, object_id: str, yaw: float) -> None:
+        self._update_object_box(object_id, yaw=yaw)
+
+    def _move_box_vertical_from_side(self, object_id: str, z: float) -> None:
+        self._update_object_box(object_id, z=z)
+
+    def _resize_box_height_from_side(
+        self, object_id: str, z: float, height: float
+    ) -> None:
+        self._update_object_box(object_id, z=z, height=height)
+
+    def _update_object_box(self, object_id: str, **changes: float) -> None:
+        label = self._current_label()
+        if label is None:
+            return
+        selected = next((obj for obj in label.objects if obj.id == object_id), None)
+        if selected is None:
+            return
+        edited = replace(selected, box3d=replace(selected.box3d, **changes))
+        objects = tuple(edited if obj.id == object_id else obj for obj in label.objects)
+        self._apply_edited_label(
+            replace(label, objects=objects, frame_status="in_progress"), object_id
+        )
 
     def _create_box_from_drag(
         self, x: float, y: float, length: float, width: float

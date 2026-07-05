@@ -16,6 +16,7 @@ def main() -> int:
     parser.add_argument("dataset", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timeout-ms", type=int, default=15_000)
+    parser.add_argument("--capture-delay-ms", type=int, default=1_200)
     parser.add_argument("--frame")
     parser.add_argument("--camera")
     parser.add_argument("--select-visible", action="store_true")
@@ -23,6 +24,7 @@ def main() -> int:
     parser.add_argument("--exercise-edit", action="store_true")
     parser.add_argument("--create-mode", action="store_true")
     parser.add_argument("--show-bev", action="store_true")
+    parser.add_argument("--show-side", action="store_true")
     parser.add_argument(
         "--point-color-mode", choices=["sensor", "height", "intensity", "uniform"]
     )
@@ -101,7 +103,9 @@ def main() -> int:
             window.create_button.setChecked(True)
         elif args.show_bev:
             window.bev_visible_check.setChecked(True)
-        QTimer.singleShot(1200, capture)
+        if args.show_side:
+            window.side_visible_check.setChecked(True)
+        QTimer.singleShot(args.capture_delay_ms, capture)
 
     timer = QTimer()
     timer.timeout.connect(poll)

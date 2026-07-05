@@ -98,11 +98,17 @@ class WaymoLabelImporter:
     def load_reference_layers(self, frame: SourceFrameData) -> dict[str, Any]:
         layers: dict[str, Any] = {}
         for name in ("camera", "projected_lidar"):
-            path = frame.source_label_paths.get(name)
-            if path is not None:
-                with path.open("r", encoding="utf-8") as stream:
-                    layers[name] = json.load(stream)
+            if name in frame.source_label_paths:
+                layers[name] = self.load_reference_layer(frame, name)
         return layers
+
+    @staticmethod
+    def load_reference_layer(frame: SourceFrameData, name: str) -> Any:
+        path = frame.source_label_paths.get(name)
+        if path is None:
+            raise KeyError(f"reference layer {name!r} is not available")
+        with path.open("r", encoding="utf-8") as stream:
+            return json.load(stream)
 
     def class_counts(self, label: FrameLabel) -> Counter[str]:
         return Counter(obj.class_name for obj in label.objects)

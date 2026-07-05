@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
-from lidar_label_tool.domain.point_cloud import PointCloudSpec
+from lidar_label_tool.domain.point_cloud import PointCloudData, PointCloudSpec
 
 
 @dataclass(frozen=True, slots=True)

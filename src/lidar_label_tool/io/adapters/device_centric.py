@@ -34,6 +34,8 @@ class DeviceCentricAdapter:
         self._frames: dict[str, dict[str, Any]] = {}
         self._point_specs: dict[str, PointCloudSpec] = {}
         self._calibration: dict[str, Any] = {}
+        self._calibration_problem: str | None = None
+        self._lidar_status: dict[str, str] = {}
 
     @classmethod
     def can_open(cls, root: Path) -> bool:
@@ -94,14 +96,22 @@ class DeviceCentricAdapter:
             raise ValueError(f"primary_lidar is not a declared LiDAR: {primary}")
         calibration_path = manifest.get("calibration_path")
         self._calibration = {}
+        self._calibration_problem = None
         if calibration_path:
             path = self.root / str(calibration_path)
             if not path.is_file():
-                raise ValueError(f"calibration file not found: {path}")
-            loaded = _json(path)
-            if not isinstance(loaded, dict):
-                raise ValueError("calibration root must be an object")
-            self._calibration = loaded
+                self._calibration_problem = f"missing calibration file: {path}"
+            else:
+                try:
+                    loaded = _json(path)
+                    if not isinstance(loaded, dict):
+                        raise ValueError("calibration root must be an object")
+                except (OSError, ValueError, json.JSONDecodeError) as exc:
+                    self._calibration_problem = (
+                        f"invalid calibration: {type(exc).__name__}: {exc}"
+                    )
+                else:
+                    self._calibration = loaded
         self._validate_lidar_frames(reference_frame)
         self._frames = self._build_frames(manifest, primary)
         if not self._frames:
@@ -130,22 +140,30 @@ class DeviceCentricAdapter:
 
     def _validate_lidar_frames(self, reference_frame: str) -> None:
         calibrations = self._calibration.get("lidars", {})
+        self._lidar_status = {}
         for sensor_id, spec in self._point_specs.items():
             if spec.source_frame == reference_frame:
+                self._lidar_status[sensor_id] = "not_required"
                 continue
             entry = calibrations.get(sensor_id) if isinstance(calibrations, Mapping) else None
             if not isinstance(entry, Mapping) or "T_reference_sensor" not in entry:
-                raise ValueError(
-                    f"LiDAR {sensor_id} is in {spec.source_frame!r}, but "
-                    "T_reference_sensor calibration is missing"
+                self._lidar_status[sensor_id] = (
+                    "invalid"
+                    if self._calibration_problem
+                    and self._calibration_problem.startswith("invalid")
+                    else "missing"
                 )
+                continue
             if entry.get("enabled") is False:
-                raise ValueError(
-                    f"LiDAR {sensor_id} calibration is disabled; "
-                    "sensor-local clouds cannot be merged"
-                )
-            transform = np.asarray(entry["T_reference_sensor"], dtype=np.float64)
-            validate_rigid_transform(transform)
+                self._lidar_status[sensor_id] = "disabled"
+                continue
+            try:
+                transform = np.asarray(entry["T_reference_sensor"], dtype=np.float64)
+                validate_rigid_transform(transform)
+            except (TypeError, ValueError):
+                self._lidar_status[sensor_id] = "invalid"
+                continue
+            self._lidar_status[sensor_id] = "applied"
 
     def _build_frames(self, manifest: Mapping[str, Any], primary: str) -> dict[str, dict[str, Any]]:
         synchronization = manifest["synchronization"]
@@ -211,14 +229,18 @@ class DeviceCentricAdapter:
                 continue
             patterns = sensor["data_patterns"]
             if sensor["type"] == "lidar":
+                if self._lidar_status.get(sensor_id) not in {
+                    "not_required",
+                    "applied",
+                }:
+                    continue
                 paths = tuple(
                     self.root / str(patterns[key]).format(sample_id=sample_id)
                     for key in sorted(patterns)
                     if key.startswith("return")
                 )
-                existing = tuple(path for path in paths if path.is_file())
-                if existing:
-                    point_paths[sensor_id] = existing
+                if paths:
+                    point_paths[sensor_id] = paths
             else:
                 image_pattern = patterns.get("image")
                 if image_pattern:
@@ -237,21 +259,17 @@ class DeviceCentricAdapter:
             ),
         }
         for layer, paths in candidates.items():
-            path = next((candidate for candidate in paths if candidate.is_file()), None)
-            if path is not None:
-                source_labels[layer] = path
+            label_path = next(
+                (candidate for candidate in paths if candidate.is_file()), None
+            )
+            if label_path is not None:
+                source_labels[layer] = label_path
         metadata = {
             "timestamp_us": item.get("timestamp_us"),
             "calibration_path": self.manifest.get("calibration_path"),
             "reference_frame": self.index.reference_frame,
-            "sensor_status": {
-                sensor_id: (
-                    "not_required"
-                    if self._point_specs[sensor_id].source_frame == self.index.reference_frame
-                    else "applied"
-                )
-                for sensor_id in point_paths
-            },
+            "sensor_status": dict(self._lidar_status),
+            "calibration_problem": self._calibration_problem,
         }
         return SourceFrameData(
             dataset_root=self.root,
@@ -268,6 +286,11 @@ class DeviceCentricAdapter:
     def load_cloud_from_source(
         self, frame: SourceFrameData, sensor_id: str, return_id: str = "1"
     ) -> PointCloudData:
+        status = self._lidar_status.get(sensor_id, "unknown")
+        if status not in {"not_required", "applied"}:
+            raise ValueError(
+                f"sensor {sensor_id!r} is unavailable because calibration is {status}"
+            )
         paths = frame.point_cloud_paths.get(sensor_id)
         if not paths:
             raise KeyError(f"sensor {sensor_id!r} not found in {frame.frame_id}")

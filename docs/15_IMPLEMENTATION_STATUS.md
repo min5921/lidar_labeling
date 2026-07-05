@@ -37,6 +37,17 @@
 - 신규 생성 객체의 순차 다음 프레임 이어받기와 ID 유지
 - Object Detail 3D 사용자 시점 유지, 신규 박스에서만 초기화
 - W/A/S/D 위치, R/F·T/G·Y/H 크기, 좌우 방향키 프레임 단축키
+- 센서/return별 point cloud 로드 오류 격리와 구조화된 `sensor_errors`
+- reference layer별 JSON 오류 격리와 `reference_layer_errors`
+- 센서별 Not required/Applied/Missing/Invalid/Disabled/Load failed/Unknown 표시
+- MERGED reference cloud 유지 상태에서 보정 없는 선택 raw LiDAR 비활성화
+- 카메라 레이어 및 3D 객체 편집 위젯의 경량 panel 분리
+- 선택 박스 BEV x/y 드래그 미리보기와 단일 undo transaction
+- BEV 네 모서리 length/width resize와 전방축 yaw rotate handle
+- SideView 본체 z 이동과 상·하단 height resize handle
+- 모든 handle 편집의 0.05 m 최소 크기와 단일 undo transaction
+- 동일 camera image 경로의 QPixmap 재사용과 overlay만 갱신
+- instance-scoped exporter registry와 atomic 내부 FrameLabel JSON exporter
 
 ## 현재 샘플 검증 결과
 
@@ -49,7 +60,7 @@
 
 ## 테스트
 
-- unit/integration/schema 43개
+- unit/integration/schema 60개
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부
@@ -59,5 +70,5 @@
 
 1. recovery/session lock과 저장 전 source fingerprint 재검사
 2. LiDAR calibration ON/OFF·수동 6DoF panel
-3. BEV drag 이동/크기 handle과 side z/height handle
+3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
 4. portable Windows 배포 spike와 clean-PC 검증

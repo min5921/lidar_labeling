@@ -5,7 +5,12 @@ from typing import Any, Iterable, Mapping
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPen, QPixmap
-from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
+from PySide6.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
+)
 
 from lidar_label_tool.calibration.waymo_camera import ProjectedWireframe
 
@@ -18,6 +23,9 @@ class CameraImageView(QGraphicsView):
         self.setBackgroundBrush(QColor(18, 20, 24))
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self._pixmap_item: QGraphicsPixmapItem | None = None
+        self._cached_path: Path | None = None
+        self._cached_pixmap: QPixmap | None = None
+        self._overlay_items: list[QGraphicsItem] = []
         self._selected_rect: QRectF | None = None
         self._focus_selected = False
 
@@ -33,11 +41,19 @@ class CameraImageView(QGraphicsView):
         focus_selected: bool = False,
         box_line_width: float = 2.0,
     ) -> bool:
-        self._scene.clear()
-        pixmap = QPixmap(str(path))
-        if pixmap.isNull():
-            raise ValueError(f"failed to load image: {path}")
-        self._pixmap_item = self._scene.addPixmap(pixmap)
+        path = Path(path)
+        image_changed = path != self._cached_path or self._cached_pixmap is None
+        if image_changed:
+            pixmap = self._load_pixmap(path)
+            if pixmap.isNull():
+                raise ValueError(f"failed to load image: {path}")
+            self._scene.clear()
+            self._overlay_items.clear()
+            self._cached_path = path
+            self._cached_pixmap = pixmap
+            self._pixmap_item = self._scene.addPixmap(pixmap)
+        else:
+            self._clear_overlays()
         self._selected_rect = None
         self._focus_selected = focus_selected
         self._draw_boxes(camera_labels, QColor(255, 176, 32, 210), box_line_width)
@@ -48,14 +64,27 @@ class CameraImageView(QGraphicsView):
             live_wireframes, selected_object_id, box_line_width
         )
         self._selected_rect = live_selected_rect or source_selected_rect
-        self._scene.setSceneRect(self._scene.itemsBoundingRect())
+        if self._pixmap_item is not None:
+            self._scene.setSceneRect(self._pixmap_item.sceneBoundingRect())
         self._fit()
         return self._selected_rect is not None
 
     def clear_image(self) -> None:
         self._scene.clear()
         self._pixmap_item = None
+        self._cached_path = None
+        self._cached_pixmap = None
+        self._overlay_items.clear()
         self._selected_rect = None
+
+    @staticmethod
+    def _load_pixmap(path: Path) -> QPixmap:
+        return QPixmap(str(path))
+
+    def _clear_overlays(self) -> None:
+        for item in self._overlay_items:
+            self._scene.removeItem(item)
+        self._overlay_items.clear()
 
     def _draw_boxes(
         self, labels: Iterable[Mapping[str, Any]], color: QColor, width: float
@@ -64,7 +93,7 @@ class CameraImageView(QGraphicsView):
         for label in labels:
             rectangle = self._rectangle(label)
             if rectangle is not None:
-                self._scene.addRect(rectangle, pen)
+                self._overlay_items.append(self._scene.addRect(rectangle, pen))
 
     def _draw_projected_boxes(
         self,
@@ -84,16 +113,20 @@ class CameraImageView(QGraphicsView):
                 continue
             label_id = str(label.get("id", ""))
             selected = self._matches_projected_id(label_id, selected_object_id, camera_id)
-            self._scene.addRect(rectangle, selected_pen if selected else normal_pen)
+            self._overlay_items.append(
+                self._scene.addRect(rectangle, selected_pen if selected else normal_pen)
+            )
             if selected:
                 selected_rect = rectangle
                 radius = max(5.0, min(rectangle.width(), rectangle.height()) * 0.08)
-                self._scene.addEllipse(
-                    rectangle.center().x() - radius,
-                    rectangle.center().y() - radius,
-                    radius * 2,
-                    radius * 2,
-                    selected_pen,
+                self._overlay_items.append(
+                    self._scene.addEllipse(
+                        rectangle.center().x() - radius,
+                        rectangle.center().y() - radius,
+                        radius * 2,
+                        radius * 2,
+                        selected_pen,
+                    )
                 )
         return selected_rect
 
@@ -112,23 +145,27 @@ class CameraImageView(QGraphicsView):
             selected = wireframe.object_id == selected_object_id
             pen = selected_pen if selected else normal_pen
             for segment in wireframe.segments:
-                self._scene.addLine(
-                    float(segment[0, 0]),
-                    float(segment[0, 1]),
-                    float(segment[1, 0]),
-                    float(segment[1, 1]),
-                    pen,
+                self._overlay_items.append(
+                    self._scene.addLine(
+                        float(segment[0, 0]),
+                        float(segment[0, 1]),
+                        float(segment[1, 0]),
+                        float(segment[1, 1]),
+                        pen,
+                    )
                 )
             if selected and wireframe.bounds is not None:
                 min_x, min_y, max_x, max_y = wireframe.bounds
                 selected_rect = QRectF(min_x, min_y, max_x - min_x, max_y - min_y)
                 radius = max(5.0, min(selected_rect.width(), selected_rect.height()) * 0.08)
-                self._scene.addEllipse(
-                    selected_rect.center().x() - radius,
-                    selected_rect.center().y() - radius,
-                    radius * 2,
-                    radius * 2,
-                    selected_pen,
+                self._overlay_items.append(
+                    self._scene.addEllipse(
+                        selected_rect.center().x() - radius,
+                        selected_rect.center().y() - radius,
+                        radius * 2,
+                        radius * 2,
+                        selected_pen,
+                    )
                 )
         return selected_rect
 

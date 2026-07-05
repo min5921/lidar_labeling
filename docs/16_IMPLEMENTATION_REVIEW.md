@@ -1,6 +1,6 @@
 # 구현 재검수 결과
 
-검수일: 2026-07-05
+검수일: 2026-07-06
 
 ## 결론
 
@@ -16,12 +16,13 @@
 | 기존 3D 라벨 우선 표시 | 완료 | source ID/class/box를 import하고 작업 라벨이 있으면 우선 로드 |
 | 원본 비덮어쓰기 | 완료 | `labels/`는 읽기 전용, 결과는 `annotations/lidar_label_tool/`에 저장 |
 | 안전 저장 | 완료 | 임시 파일 검증, atomic replace, revision 충돌 감지, `.bak` 생성 |
-| 객체 선택 일관성 | 부분 완료 | 객체 목록과 BEV 선택이 3D/BEV/side/camera에 반영됨. 3D/side/camera 직접 picking은 미구현 |
-| 박스 편집 | 부분 완료 | 수치 편집, 키보드 이동/크기/yaw, BEV 클릭 생성, 삭제, undo/redo 지원. drag/handle 편집은 미구현 |
+| 객체 선택 일관성 | 부분 완료 | 객체 목록·전체 3D·BEV 선택이 3D/BEV/side/camera에 반영됨. side/camera 직접 picking은 미구현 |
+| 박스 편집 | 완료 | 수치·키보드 편집, BEV 생성·이동·크기·yaw handle, SideView z·height handle, 삭제, undo/redo 지원 |
 | 포인트 표시 | 완료 | sensor/height/intensity/uniform 색상과 크기 조절 |
 | 카메라 투영 | 현재 샘플 완료 | camera calibration, near/image clipping, camera-synced box 기반 live 3D wireframe |
 | 멀티 LiDAR calibration | 부분 완료 | device adapter가 sensor-local transform을 Auto 적용. ON/OFF·수동 6DoF UI는 후속 |
 | device 중심 정식 입력 | 완료 | 번호형 device 폴더, exact-stem 및 `frames.jsonl` index 지원 |
+| 부분 센서 오류 격리 | 완료 | sensor/return별 오류를 수집하고 정상 cloud 또는 camera/label이 있으면 frame을 계속 표시 |
 | 비정상 종료 복구/session lock | 미완료 | 명시 저장과 frame 이동 autosave는 있으나 recovery snapshot과 lock은 없음 |
 | 사용자 배포 | 미완료 | 개발 실행만 가능. Python 미설치 PC용 portable ZIP은 아직 없음 |
 
@@ -54,11 +55,9 @@
 ### 사용자 시험 전에 우선 해결할 항목
 
 1. recovery snapshot과 session lock
-2. 누락·손상 sensor를 frame 전체 실패 대신 sensor 단위로 격리
-3. BEV drag 이동/크기 handle과 side z/height handle
-4. frame `reviewed/skipped` 처리와 다음 미검토 frame 이동
-5. projection의 시간 동기화·motion compensation 한계를 나타내는 정확도 상태
-6. Python 미설치 Windows PC용 portable 배포와 clean-PC 검증
+2. frame `reviewed/skipped` 처리와 다음 미검토 frame 이동
+3. projection의 시간 동기화·motion compensation 한계를 나타내는 정확도 상태
+4. Python 미설치 Windows PC용 portable 배포와 clean-PC 검증
 
 ## 안전성 판단
 
@@ -67,11 +66,11 @@
 - 외부 작업 JSON 변경 충돌 감지: 적합
 - 빠른 frame 이동의 오래된 load 차단: 적합
 - source fingerprint 재검사, recovery, session lock: 보완 필요
-- sensor-local LiDAR를 calibration 없이 조용히 병합하지 않는 기능: 정식 adapter 구현 전에 반드시 완료 필요
+- sensor-local LiDAR를 calibration 없이 조용히 병합하지 않는 기능: 적합. Missing/Invalid/Disabled 센서는 제외하고 상태를 표시
 
 ## 다음 구현 순서 권장안
 
 1. recovery/session lock 및 저장 상태 강화
 2. LiDAR calibration ON/OFF·수동 조정과 sensor별 상태 표시
-3. BEV/side 직접 조작 개선
+3. exporter GUI 연결과 source-compatible 형식 구현
 4. portable 배포 spike와 clean Windows 검증

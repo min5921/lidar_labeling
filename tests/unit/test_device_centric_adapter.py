@@ -9,6 +9,8 @@ import numpy as np
 
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
+from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
+from lidar_label_tool.workers.frame_loader import load_frame_payload
 
 
 class DeviceCentricAdapterTests(unittest.TestCase):
@@ -96,6 +98,98 @@ class DeviceCentricAdapterTests(unittest.TestCase):
             transformed = adapter.load_cloud_from_source(source, "FRONT")
             np.testing.assert_allclose(transformed.xyz, [[1, 2, 3]])
             self.assertEqual(transformed.source_frame, "vehicle")
+
+    def test_merged_reference_cloud_survives_missing_optional_raw_calibration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {
+                "schema_version": "1.0",
+                "dataset_id": "merged_with_optional_raw",
+                "layout": "device_centric",
+                "reference_frame": "vehicle",
+                "primary_lidar": "MERGED",
+                "sensors": [
+                    {
+                        "id": "MERGED",
+                        "type": "lidar",
+                        "coordinate_frame": "vehicle",
+                        "data_patterns": {
+                            "return1": "sensors/lidar/MERGED/{sample_id}.bin"
+                        },
+                        "point_columns": ["x", "y", "z"],
+                        "point_dtype": "float32",
+                    },
+                    {
+                        "id": "RAW_FRONT",
+                        "type": "lidar",
+                        "coordinate_frame": "lidar:FRONT",
+                        "data_patterns": {
+                            "return1": "sensors/lidar/RAW_FRONT/{sample_id}.bin"
+                        },
+                        "point_columns": ["x", "y", "z"],
+                        "point_dtype": "float32",
+                    },
+                ],
+                "synchronization": {"mode": "exact_stem"},
+                "calibration_path": "calibration/missing.json",
+            }
+            (root / "dataset.json").write_text(json.dumps(manifest), encoding="utf-8")
+            for sensor in ("MERGED", "RAW_FRONT"):
+                folder = root / "sensors" / "lidar" / sensor
+                folder.mkdir(parents=True)
+                np.array([[1, 2, 3]], dtype="<f4").tofile(folder / "0000.bin")
+
+            adapter = DeviceCentricAdapter(root)
+            index = adapter.scan()
+            source = adapter.load_source_frame(index.frame_ids[0])
+
+            self.assertEqual(set(source.point_cloud_paths), {"MERGED"})
+            self.assertEqual(source.metadata["sensor_status"]["MERGED"], "not_required")
+            self.assertEqual(source.metadata["sensor_status"]["RAW_FRONT"], "missing")
+            cloud = adapter.load_cloud_from_source(source, "MERGED")
+            np.testing.assert_allclose(cloud.xyz, [[1, 2, 3]])
+
+    def test_declared_missing_return_reaches_loader_for_structured_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {
+                "schema_version": "1.0",
+                "dataset_id": "missing_return",
+                "layout": "device_centric",
+                "reference_frame": "vehicle",
+                "primary_lidar": "MERGED",
+                "sensors": [
+                    {
+                        "id": "MERGED",
+                        "type": "lidar",
+                        "coordinate_frame": "vehicle",
+                        "data_patterns": {
+                            "return1": "sensors/lidar/MERGED/r1/{sample_id}.bin",
+                            "return2": "sensors/lidar/MERGED/r2/{sample_id}.bin",
+                        },
+                        "point_columns": ["x", "y", "z"],
+                        "point_dtype": "float32",
+                    }
+                ],
+                "synchronization": {"mode": "exact_stem"},
+            }
+            (root / "dataset.json").write_text(json.dumps(manifest), encoding="utf-8")
+            return1 = root / "sensors" / "lidar" / "MERGED" / "r1"
+            return1.mkdir(parents=True)
+            np.array([[1, 2, 3]], dtype="<f4").tofile(return1 / "0000.bin")
+
+            adapter = DeviceCentricAdapter(root)
+            adapter.scan()
+            source = adapter.load_source_frame("0000")
+
+            self.assertEqual(len(source.point_cloud_paths["MERGED"]), 2)
+            self.assertFalse(source.point_cloud_paths["MERGED"][1].exists())
+            with self.assertRaises(FileNotFoundError):
+                adapter.load_cloud_from_source(source, "MERGED", "2")
+            payload = load_frame_payload(adapter, WaymoLabelImporter({}), "0000")
+            self.assertEqual(len(payload.clouds["MERGED"]), 1)
+            self.assertIn("MERGED:return2", payload.sensor_errors)
+            self.assertIn("FileNotFoundError", payload.sensor_errors["MERGED:return2"])
 
 
 if __name__ == "__main__":

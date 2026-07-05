@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-from typing import Any
 from uuid import uuid4
 
 from lidar_label_tool.domain.labels import FrameLabel
