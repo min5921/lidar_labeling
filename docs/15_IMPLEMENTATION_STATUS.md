@@ -56,6 +56,9 @@
 - CLI preflight 종료 코드 0/1/2와 GUI 한국어 QA 요약
 - source/working 분리 label stats와 recovery 수 집계
 - export ID/class/finite/양수 크기 선검증과 batch 전체 사전 검증
+- 공유 LRU 렌더 캐시와 객체 선택/박스 표시/측면 평면별 렌더 무효화 분리
+- 상태 표시줄의 로드·표시 포인트, 객체, dirty, 경고, 활성 센서 요약
+- 키보드 이동·미세 이동·크기·yaw 간격의 실행 중 UI 조절
 
 ## 현재 샘플 검증 결과
 
@@ -68,7 +71,7 @@
 
 ## 테스트
 
-- unit/integration/schema 87개
+- unit/integration/schema 90개
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부

@@ -10,7 +10,8 @@ from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.geometry.box3d import side_rectangle
 from lidar_label_tool.geometry.box_edit import move_box_z, resize_box_height
-from lidar_label_tool.ui.colors import class_color, point_rgba
+from lidar_label_tool.ui.colors import class_color
+from lidar_label_tool.ui.render_cache import PointCloudRenderCache
 from lidar_label_tool.ui.views.bev_view import _brushes
 
 
@@ -21,8 +22,10 @@ class SideView(pg.PlotWidget):
     boxVerticalMoved = Signal(str, float)
     boxHeightResized = Signal(str, float, float)
 
-    def __init__(self) -> None:
+    def __init__(self, render_cache: PointCloudRenderCache | None = None) -> None:
         super().__init__()
+        self._render_cache = render_cache or PointCloudRenderCache()
+        self._cloud_render_token: tuple[object, ...] | None = None
         self.plane = "xz"
         self.setBackground((18, 20, 24))
         self.showGrid(x=True, y=True, alpha=0.2)
@@ -50,6 +53,7 @@ class SideView(pg.PlotWidget):
             raise ValueError(plane)
         self._clear_edit_preview()
         self.plane = plane
+        self._cloud_render_token = None
         self.setLabel("bottom", "x forward" if plane == "xz" else "y left", units="m")
 
     def set_clouds(
@@ -60,20 +64,24 @@ class SideView(pg.PlotWidget):
         point_size: float = 2.0,
         color_mode: str = "sensor",
         uniform_color: str = "#E8E8E8",
-    ) -> None:
+    ) -> int:
+        batch = self._render_cache.prepare(
+            clouds,
+            max_points=max_points,
+            color_mode=color_mode,
+            uniform_color=uniform_color,
+        )
+        token = (batch.token, float(point_size), self.plane)
+        if token == self._cloud_render_token:
+            return batch.rendered_point_count
         self._clear_items(self._point_items)
-        clouds = tuple(clouds)
-        total = sum(cloud.point_count for cloud in clouds)
-        stride = max(1, math.ceil(total / max_points)) if total else 1
         axis = 0 if self.plane == "xz" else 1
-        for cloud in clouds:
-            xyz = cloud.xyz[::stride]
-            rgba = point_rgba(cloud, color_mode, uniform_color)[::stride]
+        for cloud in batch.clouds:
             item = pg.ScatterPlotItem(
-                x=xyz[:, axis],
-                y=xyz[:, 2],
+                x=cloud.xyz[:, axis],
+                y=cloud.xyz[:, 2],
                 pen=None,
-                brush=_brushes(rgba),
+                brush=_brushes(cloud.rgba),
                 size=point_size,
                 pxMode=True,
             )
@@ -82,6 +90,8 @@ class SideView(pg.PlotWidget):
         if self._first_cloud and self._point_items:
             self.autoRange()
             self._first_cloud = False
+        self._cloud_render_token = token
+        return batch.rendered_point_count
 
     def set_boxes(
         self,

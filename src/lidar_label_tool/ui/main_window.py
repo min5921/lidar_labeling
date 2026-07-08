@@ -52,6 +52,7 @@ from lidar_label_tool.services.box_propagation import created_objects, merge_car
 from lidar_label_tool.services.recovery import RecoveryStore
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
+from lidar_label_tool.ui.render_cache import PointCloudRenderCache
 from lidar_label_tool.ui.views import (
     BevView,
     CameraImageView,
@@ -127,6 +128,11 @@ class MainWindow(QMainWindow):
         self._pending_carried_objects: tuple[LabeledObject, ...] = ()
         self._pending_carried_selection: str | None = None
         self._detail_reset_requested = False
+        self._suppress_auto_focus = False
+        self._rendered_point_count = 0
+        self.render_cache = PointCloudRenderCache(
+            max_cache_mb=int(self.config["performance"]["max_cache_mb"])
+        )
 
         self.base_window_title = f"LiDAR Label Tool — {self.index.dataset_id}"
         self.setWindowTitle(self.base_window_title)
@@ -142,11 +148,11 @@ class MainWindow(QMainWindow):
         self._request_frame(self.index.frame_ids[0])
 
     def _build_ui(self) -> None:
-        self.view_3d = PointCloud3DView()
-        self.bev_view = BevView()
+        self.view_3d = PointCloud3DView(self.render_cache)
+        self.bev_view = BevView(self.render_cache)
         self.image_view = CameraImageView()
         self.detail_view = ObjectDetail3DView()
-        self.side_view = SideView()
+        self.side_view = SideView(self.render_cache)
         self.view_3d.objectSelected.connect(self._select_object_id)
         self.bev_view.objectSelected.connect(self._select_object_id)
         self.bev_view.boxMoved.connect(self._move_box_from_bev)
@@ -193,6 +199,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(status)
         self.status_message = QLabel("준비")
         status.addWidget(self.status_message, 1)
+        self.frame_status_badge = QLabel()
+        status.addPermanentWidget(self.frame_status_badge)
         self.calibration_badge = QLabel("Calibration: 확인 중")
         status.addPermanentWidget(self.calibration_badge)
 
@@ -316,6 +324,31 @@ class MainWindow(QMainWindow):
         point_layout.addRow("단색", self.uniform_color_button)
         layout.addWidget(point_group)
 
+        keyboard_group = QGroupBox("키보드 조절 간격")
+        keyboard_layout = QFormLayout(keyboard_group)
+        self.move_step_spin = self._step_spin(
+            float(self.config["editing"]["move_step_m"]), 0.001, 10.0, 0.01, " m"
+        )
+        self.fine_move_step_spin = self._step_spin(
+            float(self.config["editing"]["fine_move_step_m"]),
+            0.001,
+            10.0,
+            0.01,
+            " m",
+        )
+        self.resize_step_spin = self._step_spin(
+            float(self.config["editing"]["resize_step_m"]), 0.001, 10.0, 0.01, " m"
+        )
+        self.yaw_step_spin = self._step_spin(
+            float(self.config["editing"]["yaw_step_deg"]), 0.1, 90.0, 0.5, "°"
+        )
+        keyboard_layout.addRow("이동", self.move_step_spin)
+        keyboard_layout.addRow("미세 이동 (Shift)", self.fine_move_step_spin)
+        keyboard_layout.addRow("크기", self.resize_step_spin)
+        keyboard_layout.addRow("회전", self.yaw_step_spin)
+        keyboard_group.setToolTip("현재 실행 중 키보드 편집 간격입니다. 원본 설정 파일은 변경하지 않습니다.")
+        layout.addWidget(keyboard_group)
+
         create_group = QGroupBox("새 박스 생성")
         create_layout = QFormLayout(create_group)
         self.new_class_combo = QComboBox()
@@ -397,6 +430,22 @@ class MainWindow(QMainWindow):
         scroll.setWidget(panel)
         self._install_shortcuts()
         return scroll
+
+    @staticmethod
+    def _step_spin(
+        value: float,
+        minimum: float,
+        maximum: float,
+        step: float,
+        suffix: str,
+    ) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setDecimals(3)
+        spin.setRange(minimum, maximum)
+        spin.setSingleStep(step)
+        spin.setValue(value)
+        spin.setSuffix(suffix)
+        return spin
 
     def _install_shortcuts(self) -> None:
         self.shortcuts: list[QShortcut] = []
@@ -747,7 +796,7 @@ class MainWindow(QMainWindow):
         if self.payload is None:
             return
         self._render_clouds()
-        self._render_boxes_only()
+        self._render_boxes_only(render_detail=False)
         self._render_camera()
 
     def _render_clouds(self, *_: Any) -> None:
@@ -757,7 +806,7 @@ class MainWindow(QMainWindow):
         max_points = int(self.config["point_cloud"]["max_render_points"])
         point_size = self.point_size_spin.value()
         color_mode = str(self.point_color_combo.currentData())
-        self.view_3d.set_clouds(
+        self._rendered_point_count = self.view_3d.set_clouds(
             clouds,
             max_points=max_points,
             point_size=point_size,
@@ -765,22 +814,35 @@ class MainWindow(QMainWindow):
             uniform_color=self.uniform_point_color,
         )
         if self.bev_visible_check.isChecked():
-            self.bev_view.set_clouds(
-                clouds,
-                point_size=point_size,
-                color_mode=color_mode,
-                uniform_color=self.uniform_point_color,
-            )
+            self._render_bev_clouds(clouds)
         if self.side_visible_check.isChecked():
-            self.side_view.set_clouds(
-                clouds,
-                point_size=point_size,
-                color_mode=color_mode,
-                uniform_color=self.uniform_point_color,
-            )
+            self._render_side_clouds(clouds)
         self._render_detail()
+        self._update_status_badge()
 
-    def _render_boxes_only(self) -> None:
+    def _render_bev_clouds(
+        self, clouds: Iterable[PointCloudData] | None = None
+    ) -> None:
+        active = tuple(clouds) if clouds is not None else tuple(self._active_clouds())
+        self.bev_view.set_clouds(
+            active,
+            point_size=self.point_size_spin.value(),
+            color_mode=str(self.point_color_combo.currentData()),
+            uniform_color=self.uniform_point_color,
+        )
+
+    def _render_side_clouds(
+        self, clouds: Iterable[PointCloudData] | None = None
+    ) -> None:
+        active = tuple(clouds) if clouds is not None else tuple(self._active_clouds())
+        self.side_view.set_clouds(
+            active,
+            point_size=self.point_size_spin.value(),
+            color_mode=str(self.point_color_combo.currentData()),
+            uniform_color=self.uniform_point_color,
+        )
+
+    def _render_boxes_only(self, *_: Any, render_detail: bool = True) -> None:
         label = self._current_label()
         if label is None:
             return
@@ -804,7 +866,8 @@ class MainWindow(QMainWindow):
             self.side_view.set_boxes(
                 objects, selected_id=selected_id, line_width=line_width
             )
-        self._render_detail()
+        if render_detail:
+            self._render_detail()
 
     def _render_detail(self) -> None:
         if self.payload is None:
@@ -928,14 +991,24 @@ class MainWindow(QMainWindow):
         self._update_editor(selected)
         self._render_boxes_only()
         self._render_camera()
-        if selected is not None and self.auto_focus_check.isChecked():
+        if (
+            selected is not None
+            and self.auto_focus_check.isChecked()
+            and not self._suppress_auto_focus
+        ):
             self._focus_object(selected)
 
     def _change_side_plane(self, plane: str) -> None:
         self.side_view.set_plane(plane)
         if self.side_visible_check.isChecked():
-            self._render_clouds()
-            self._render_boxes_only()
+            self._render_side_clouds()
+            label = self._current_label()
+            if label is not None:
+                self.side_view.set_boxes(
+                    label.objects,
+                    selected_id=self._selected_id(),
+                    line_width=self.box_line_width_spin.value(),
+                )
 
     def _update_auxiliary_visibility(self, *_: Any) -> None:
         show_bev = self.bev_visible_check.isChecked()
@@ -946,7 +1019,10 @@ class MainWindow(QMainWindow):
         self.auxiliary_views.setVisible(show_bev or show_side)
         self.view_stack.setSizes([650, 330] if show_bev or show_side else [980, 0])
         if self.payload is not None and (show_bev or show_side):
-            self._render_clouds()
+            if show_bev:
+                self._render_bev_clouds()
+            if show_side:
+                self._render_side_clouds()
             self._render_boxes_only()
             selected = self._selected_object()
             if selected is not None and self.auto_focus_check.isChecked():
@@ -1194,8 +1270,12 @@ class MainWindow(QMainWindow):
         label = self._current_label()
         if label is None:
             return
-        self._populate_objects(label.objects)
-        self._select_object_id(selected_id)
+        self._suppress_auto_focus = True
+        try:
+            self._populate_objects(label.objects)
+            self._select_object_id(selected_id)
+        finally:
+            self._suppress_auto_focus = False
         self._render_boxes_only()
         self._render_camera()
         self._update_editor()
@@ -1244,6 +1324,49 @@ class MainWindow(QMainWindow):
         self.redo_button.setEnabled(bool(self.history and self.history.can_redo))
         self.setWindowTitle(f"{'* ' if dirty else ''}{self.base_window_title}")
         self._update_frame_summary()
+        self._update_status_badge()
+
+    def _update_status_badge(self) -> None:
+        if self.payload is None or not hasattr(self, "frame_status_badge"):
+            return
+        label = self._current_label()
+        if label is None:
+            return
+        loaded = sum(
+            cloud.point_count
+            for clouds in self.payload.clouds.values()
+            for cloud in clouds
+        )
+        active_sensors = [
+            sensor
+            for sensor, clouds in self.payload.clouds.items()
+            if clouds
+            and (
+                self.sensor_checks.get(sensor) is None
+                or self.sensor_checks[sensor].isChecked()
+            )
+        ]
+        warning_messages = [
+            f"{name}: {message}"
+            for name, message in self.payload.sensor_errors.items()
+        ] + [
+            f"{name} layer: {message}"
+            for name, message in self.payload.reference_layer_errors.items()
+        ]
+        dirty = bool(self.history and self.history.dirty)
+        self.frame_status_badge.setText(
+            f"{label.frame_id} · 로드 {loaded:,}/표시 {self._rendered_point_count:,} · "
+            f"객체 {len(label.objects)} · {'미저장' if dirty else '저장됨'} · "
+            f"경고 {len(warning_messages)} · 센서 {','.join(active_sensors) or '-'}"
+        )
+        tooltip = [
+            f"활성 센서: {', '.join(active_sensors) or '없음'}",
+            f"렌더 캐시: {self.render_cache.size_bytes / (1024 * 1024):.1f} MB "
+            f"/ {self.render_cache.item_count}개",
+        ]
+        if warning_messages:
+            tooltip.extend(("", "로드 경고:", *warning_messages))
+        self.frame_status_badge.setToolTip("\n".join(tooltip))
 
     def _update_frame_summary(self) -> None:
         label = self._current_label()
@@ -1327,13 +1450,16 @@ class MainWindow(QMainWindow):
             return
         box = selected.box3d
         if field == "yaw":
-            step = math.radians(float(self.config["editing"]["yaw_step_deg"]))
+            step = math.radians(self.yaw_step_spin.value())
         elif field in {"length", "width", "height"}:
-            step = float(self.config["editing"]["resize_step_m"])
+            step = self.resize_step_spin.value()
         else:
             fine = bool(QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
-            key = "fine_move_step_m" if fine else "move_step_m"
-            step = float(self.config["editing"][key])
+            step = (
+                self.fine_move_step_spin.value()
+                if fine
+                else self.move_step_spin.value()
+            )
         value = getattr(box, field) + direction * step
         if field in {"length", "width", "height"}:
             value = max(0.01, value)
