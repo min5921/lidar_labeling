@@ -4,7 +4,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.io.dataset import SourceFrameData
@@ -37,7 +37,7 @@ class WaymoLabelImporter:
                 raise ValueError(f"Waymo laser label root must be a list: {label_path}")
             raw_objects = loaded
 
-        objects = tuple(self._import_object(item) for item in raw_objects)
+        objects = self.import_laser_objects(raw_objects)
         source_paths = [
             path.relative_to(frame.dataset_root).as_posix()
             for path in frame.source_label_paths.values()
@@ -112,6 +112,12 @@ class WaymoLabelImporter:
 
     def class_counts(self, label: FrameLabel) -> Counter[str]:
         return Counter(obj.class_name for obj in label.objects)
+
+    def import_laser_objects(
+        self, raw_objects: Iterable[Mapping[str, Any]]
+    ) -> tuple[LabeledObject, ...]:
+        """Validate and convert already-decoded source objects without file hashing."""
+        return tuple(self._import_object(item) for item in raw_objects)
 
     def _import_object(self, item: Mapping[str, Any]) -> LabeledObject:
         raw_box = item.get("box")

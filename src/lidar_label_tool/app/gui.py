@@ -5,9 +5,15 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
+from lidar_label_tool.app.config import load_config
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.labels.json_repository import LabelRepository
-from lidar_label_tool.services.dataset_preflight import inspect_dataset
+from lidar_label_tool.services.dataset_preflight import (
+    DatasetPreflight,
+    PreflightReport,
+    inspect_dataset,
+    validate_dataset,
+)
 from lidar_label_tool.services.session_lock import (
     SessionLock,
     SessionLockExistsError,
@@ -112,11 +118,49 @@ def _acquire_session_lock(
     return lock
 
 
+def _confirm_dataset_open(
+    preflight: DatasetPreflight,
+    report: PreflightReport,
+    *,
+    always_confirm: bool,
+) -> bool:
+    summary = preflight.summary_text() + "\n\nQA 사전 검사:\n" + report.short_summary_ko()
+    if report.error_count and report.usable_frame_count == 0:
+        QMessageBox.critical(
+            None,
+            "라벨링 가능한 LiDAR 프레임 없음",
+            summary
+            + "\n\n오류를 수정한 뒤 다시 여세요. 자세한 내용은 CLI preflight로 확인할 수 있습니다.",
+        )
+        return False
+    if report.error_count:
+        answer = QMessageBox.question(
+            None,
+            "데이터셋 QA 오류 발견",
+            summary
+            + "\n\n일부 데이터는 사용할 수 있지만 오류가 있습니다. 그래도 여시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+    if not always_confirm:
+        return True
+    answer = QMessageBox.question(
+        None,
+        "데이터셋 확인",
+        summary + "\n\n이 데이터셋을 여시겠습니까?",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        QMessageBox.StandardButton.Yes,
+    )
+    return answer == QMessageBox.StandardButton.Yes
+
+
 def run_gui(dataset_root: Path | None, config_path: Path) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("LiDAR Label Tool")
     interactive_selection = dataset_root is None
     selected_root = dataset_root
+    config = load_config(config_path)
 
     while True:
         if selected_root is None:
@@ -150,28 +194,32 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
         if selected_root is None:
             continue
 
-        if interactive_selection:
-            answer = QMessageBox.question(
-                None,
-                "데이터셋 확인",
-                preflight.summary_text() + "\n\n이 데이터셋을 여시겠습니까?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Yes,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
+        report = validate_dataset(
+            selected_root,
+            class_mapping=config["source_class_mappings"],
+            workspace_root=workspace_root,
+            verify_images=False,
+        )
+        if not _confirm_dataset_open(
+            preflight, report, always_confirm=interactive_selection
+        ):
+            if interactive_selection:
                 selected_root = None
                 continue
+            return 2 if report.error_count else 0
 
         session_lock: SessionLock | None = None
+        assert selected_root is not None
+        opening_root = selected_root
         try:
-            session_lock = _acquire_session_lock(selected_root, workspace_root)
+            session_lock = _acquire_session_lock(opening_root, workspace_root)
             if session_lock is None:
                 if not interactive_selection:
                     return 0
                 selected_root = None
                 continue
             window = MainWindow(
-                selected_root,
+                opening_root,
                 config_path,
                 workspace_root,
                 session_lock=session_lock,
@@ -182,7 +230,7 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
                     session_lock.release()
                 except OSError:
                     pass
-            _show_open_error(selected_root, exc)
+            _show_open_error(opening_root, exc)
             if not interactive_selection:
                 return 2
             selected_root = None

@@ -48,6 +48,14 @@
 - 모든 handle 편집의 0.05 m 최소 크기와 단일 undo transaction
 - 동일 camera image 경로의 QPixmap 재사용과 overlay만 갱신
 - instance-scoped exporter registry와 atomic 내부 FrameLabel JSON exporter
+- dirty frame 주기 복구 snapshot과 복원/무시/삭제 사용자 선택
+- PID/hostname 기반 dataset session lock, stale/malformed 교체, 소유권 안전 해제
+- `centerpoint_intermediate_json` 명시적 exporter와 단일/다중 frame CLI export
+- Windows PyInstaller one-folder 빌드 스크립트와 clean-PC 검증 문서
+- 전체 frame/센서 파일·라벨·보정·작업 상태의 구조화된 preflight report
+- CLI preflight 종료 코드 0/1/2와 GUI 한국어 QA 요약
+- source/working 분리 label stats와 recovery 수 집계
+- export ID/class/finite/양수 크기 선검증과 batch 전체 사전 검증
 
 ## 현재 샘플 검증 결과
 
@@ -60,7 +68,7 @@
 
 ## 테스트
 
-- unit/integration/schema 60개
+- unit/integration/schema 87개
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부
@@ -68,7 +76,7 @@
 
 ## 다음 구현
 
-1. recovery/session lock과 저장 전 source fingerprint 재검사
+1. 저장 직전 source fingerprint 재검사
 2. LiDAR calibration ON/OFF·수동 6DoF panel
 3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
-4. portable Windows 배포 spike와 clean-PC 검증
+4. portable Windows 배포본 생성, 코드 서명과 clean-PC 최종 검증

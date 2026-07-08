@@ -13,4 +13,6 @@ class LabelExporter(Protocol):
     name: str
     extension: str
 
+    def validate(self, label: FrameLabel) -> None: ...
+
     def export_frame(self, label: FrameLabel, output_path: Path) -> None: ...

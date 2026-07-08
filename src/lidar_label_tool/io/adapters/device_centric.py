@@ -214,6 +214,14 @@ class DeviceCentricAdapter:
     def index(self) -> DatasetIndex:
         return self._index or self.scan()
 
+    def point_spec_for(self, sensor_id: str) -> PointCloudSpec:
+        if self._index is None:
+            self.scan()
+        try:
+            return self._point_specs[sensor_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown LiDAR sensor: {sensor_id}") from exc
+
     def load_source_frame(self, frame_id: str) -> SourceFrameData:
         if frame_id not in self._frames:
             self.scan()

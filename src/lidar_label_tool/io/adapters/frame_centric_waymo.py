@@ -87,6 +87,11 @@ class WaymoFrameCentricAdapter:
         assert self._segment is not None
         return self._segment
 
+    def point_spec_for(self, sensor_id: str) -> PointCloudSpec:
+        if sensor_id not in self.index.lidar_ids:
+            raise KeyError(f"unknown LiDAR sensor: {sensor_id}")
+        return self.index.point_spec
+
     @property
     def camera_calibration_count(self) -> int:
         return len(self.segment.get("camera_calibrations", []))

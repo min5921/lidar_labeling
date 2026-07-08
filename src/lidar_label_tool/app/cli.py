@@ -7,12 +7,14 @@ from pathlib import Path
 import sys
 
 from lidar_label_tool.app.config import default_config_path, load_config
-from lidar_label_tool.exporters import create_default_registry, export_frames
+from lidar_label_tool.exporters import ExportBatchError, create_default_registry, export_frames
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
+from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
 from lidar_label_tool.services.frame_session import FrameSessionService
+from lidar_label_tool.services.label_statistics import LabelStatistics, collect_label_statistics
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -46,6 +48,17 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="separate workspace root used for working labels",
     )
+    preflight_parser = subparsers.add_parser(
+        "preflight", help="validate dataset files and label safety without modifying data"
+    )
+    preflight_parser.add_argument("dataset", type=Path)
+    preflight_parser.add_argument("--json", action="store_true", dest="as_json")
+    preflight_parser.add_argument("--workspace", type=Path)
+    stats_parser = subparsers.add_parser("stats", help="summarize source or working labels")
+    stats_parser.add_argument("dataset", type=Path)
+    stats_parser.add_argument("--working", action="store_true")
+    stats_parser.add_argument("--json", action="store_true", dest="as_json")
+    stats_parser.add_argument("--workspace", type=Path)
     return parser
 
 
@@ -120,7 +133,8 @@ def _export(args: argparse.Namespace) -> int:
     if unknown:
         raise ValueError(f"unknown frame id(s): {', '.join(unknown)}")
     labels = tuple(session.open_frame(frame_id).label for frame_id in frame_ids)
-    exporter = create_default_registry().get(args.export_format)
+    allowed_classes = tuple(str(item["name"]) for item in config["classes"])
+    exporter = create_default_registry(allowed_classes).get(args.export_format)
     output = Path(args.output)
     exported: tuple[Path, ...]
     if len(labels) == 1 and output.suffix:
@@ -147,6 +161,89 @@ def _export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_preflight(report: PreflightReport) -> None:
+    print(f"Dataset: {report.dataset_id}")
+    print(f"Adapter: {report.adapter_name}")
+    print(f"Frames: {report.frame_count} (usable: {report.usable_frame_count})")
+    print(f"LiDARs: {', '.join(report.lidar_ids) or 'none'}")
+    print(f"Cameras: {', '.join(report.camera_ids) or 'none'}")
+    print(f"Reference frame: {report.reference_frame}")
+    print(
+        "Working labels: "
+        f"{report.working_label_count}, recovery snapshots: {report.recovery_snapshot_count}"
+    )
+    print(
+        f"Issues: errors={report.error_count}, warnings={report.warning_count}, "
+        f"info={report.info_count}"
+    )
+    if report.issues:
+        print("\nIssues:")
+        for issue in report.issues:
+            context = " ".join(
+                value
+                for value in (issue.frame_id, issue.sensor_id, str(issue.path or ""))
+                if value
+            )
+            suffix = f" {context}" if context else ""
+            print(f"[{issue.severity}] {issue.code}{suffix} — {issue.message}")
+
+
+def _preflight(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    report = validate_dataset(
+        args.dataset,
+        class_mapping=config["source_class_mappings"],
+        workspace_root=args.workspace,
+    )
+    if args.as_json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        _print_preflight(report)
+    return report.exit_code
+
+
+def _print_statistics(statistics: LabelStatistics) -> None:
+    statuses = dict(statistics.status_counts)
+    print(f"Dataset: {statistics.dataset_id}")
+    print(f"Mode: {statistics.mode}")
+    print(f"Frames: {statistics.frame_count}")
+    print(
+        "Status: "
+        + ", ".join(f"{name}={count}" for name, count in sorted(statuses.items()))
+    )
+    print(f"Visited: {statistics.visited_count}")
+    print(f"Objects: {statistics.object_count}")
+    print(
+        "Objects/frame: "
+        f"avg={statistics.average_objects_per_frame:.2f}, "
+        f"min={statistics.min_objects_per_frame}, max={statistics.max_objects_per_frame}"
+    )
+    classes = ", ".join(
+        f"{name}={count}" for name, count in statistics.class_counts
+    ) or "none"
+    print(f"Classes: {classes}")
+    print(
+        f"Labels: source={statistics.source_label_count}, "
+        f"working={statistics.working_label_count}, "
+        f"recovery={statistics.recovery_snapshot_count}"
+    )
+
+
+def _stats(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    statistics = collect_label_statistics(
+        args.dataset,
+        class_mapping=config["source_class_mappings"],
+        working=args.working,
+        workspace_root=args.workspace,
+    )
+    if args.as_json:
+        print(json.dumps(statistics.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        _print_statistics(statistics)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -158,7 +255,11 @@ def main(argv: list[str] | None = None) -> int:
             return run_gui(args.dataset, args.config)
         if args.command == "export":
             return _export(args)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        if args.command == "preflight":
+            return _preflight(args)
+        if args.command == "stats":
+            return _stats(args)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, ExportBatchError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 1

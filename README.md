@@ -21,6 +21,10 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 - BEV 모서리 resize·yaw rotate handle과 SideView z·height handle 구현 완료
 - 카메라/객체 편집 패널 경량 분리와 카메라 픽셀맵 캐시 구현 완료
 - 내부 `FrameLabel` JSON exporter protocol·registry 확장점 구현 완료
+- 비정상 종료 복구 snapshot과 dataset session lock 구현 완료
+- CenterPoint 중간 JSON CLI export와 Windows portable 빌드 스크립트 추가
+- 전체 프레임 dataset preflight, GUI QA 요약, source/working label 통계 CLI 추가
+- export class/finite/box 크기 선검증과 다중 frame 사전 검증 추가
 
 확정된 구현 기본값은 `docs/04_OPEN_DECISIONS.md`에 있다.
 
@@ -42,6 +46,8 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 14. `docs/14_UX_SAFETY_SPEC.md`
 15. `docs/15_IMPLEMENTATION_STATUS.md`
 16. `docs/16_IMPLEMENTATION_REVIEW.md`
+17. `docs/17_WINDOWS_PORTABLE_BUILD.md`
+18. `docs/18_PREFLIGHT_AND_QA.md`
 
 실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다.
 
@@ -111,12 +117,19 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\<dataset_name>\
 
 .\.venv\Scripts\python.exe -m lidar_label_tool gui `
   .\local_data\incoming\segment-175830748773502782_1580_000_1600_000_with_camera_labels
+
+.\.venv\Scripts\lidar-label-tool.exe preflight `
+  .\local_data\incoming\merged_device_full --json
+
+.\.venv\Scripts\lidar-label-tool.exe stats `
+  .\local_data\incoming\merged_device_full --working --json
 ```
 
 테스트:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
 ```
 
-현재 GUI는 기존 3D 라벨을 먼저 불러오며, BEV 클릭 추가, 전체 3D 클릭 선택, BEV 이동·크기·yaw handle, SideView z·height handle, 키보드 편집, 신규 박스의 다음 프레임 이어받기, 삭제, Undo/Redo, 자동 저장을 지원한다. 한 LiDAR return이 손상되어도 다른 cloud와 camera/label은 계속 열며 센서별 `Load failed` 상태를 표시한다. 기본 화면은 전체 3D, camera, 선택 객체 중심 Object Detail 3D이며 BEV/side는 필요할 때 여는 보조 뷰다. Object Detail 3D 시점은 새 박스를 만들 때만 초기화되고 일반 편집과 프레임 이동에서는 유지된다. 저장 결과는 원본 `labels/`를 덮어쓰지 않고 데이터셋의 `annotations/lidar_label_tool/<frame>.json`에 기록한다. Camera GT와 source projected layer는 기본 OFF이고, calibration으로 현재 작업 3D box를 계산하는 live projection이 기본 ON이다. Exporter registry는 내부 JSON exporter 확장점만 제공하며 정상 저장과 분리되어 있고 아직 GUI에는 연결하지 않았다.
+현재 GUI는 기존 3D 라벨을 먼저 불러오며, BEV 클릭 추가, 전체 3D 클릭 선택, BEV 이동·크기·yaw handle, SideView z·height handle, 키보드 편집, 신규 박스의 다음 프레임 이어받기, 삭제, Undo/Redo, 자동 저장을 지원한다. 한 LiDAR return이 손상되어도 다른 cloud와 camera/label은 계속 열며 센서별 `Load failed` 상태를 표시한다. 기본 화면은 전체 3D, camera, 선택 객체 중심 Object Detail 3D이며 BEV/side는 필요할 때 여는 보조 뷰다. Object Detail 3D 시점은 새 박스를 만들 때만 초기화되고 일반 편집과 프레임 이동에서는 유지된다. 저장 결과는 원본 `labels/`를 덮어쓰지 않고 데이터셋의 `annotations/lidar_label_tool/<frame>.json`에 기록하며 미저장 변경은 별도 `.recovery`에 보존한다. Camera GT와 source projected layer는 기본 OFF이고, calibration으로 현재 작업 3D box를 계산하는 live projection이 기본 ON이다. Exporter registry는 내부 JSON과 CenterPoint 중간 JSON을 제공하며 정상 저장과 분리되어 CLI에서 명시적으로 실행한다. GUI export 대화상자는 아직 없다.

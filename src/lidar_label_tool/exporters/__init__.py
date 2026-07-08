@@ -1,5 +1,5 @@
 from lidar_label_tool.exporters.base import LabelExporter
-from lidar_label_tool.exporters.batch import export_frames
+from lidar_label_tool.exporters.batch import ExportBatchError, export_frames
 from lidar_label_tool.exporters.centerpoint_intermediate_json import (
     CenterPointIntermediateJsonExporter,
 )
@@ -8,6 +8,7 @@ from lidar_label_tool.exporters.registry import ExporterRegistry, create_default
 
 __all__ = [
     "ExporterRegistry",
+    "ExportBatchError",
     "CenterPointIntermediateJsonExporter",
     "LabelExporter",
     "LidarLabelJsonExporter",
