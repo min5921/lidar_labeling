@@ -20,11 +20,19 @@ class LidarLabelJsonExporter:
         temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         try:
             with temporary.open("x", encoding="utf-8", newline="\n") as stream:
-                json.dump(label.to_dict(), stream, ensure_ascii=False, indent=2)
+                json.dump(
+                    label.to_dict(), stream, ensure_ascii=False, indent=2, allow_nan=False
+                )
                 stream.write("\n")
                 stream.flush()
                 os.fsync(stream.fileno())
+            with temporary.open("r", encoding="utf-8") as stream:
+                restored = FrameLabel.from_dict(json.load(stream))
+            if restored.to_dict() != label.to_dict():
+                raise ValueError("exported internal label failed round-trip validation")
             os.replace(temporary, target)
         finally:
-            if temporary.exists():
+            try:
                 temporary.unlink()
+            except FileNotFoundError:
+                pass

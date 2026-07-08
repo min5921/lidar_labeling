@@ -39,6 +39,7 @@ artifacts/
 .lidar_label_tool/
 **/.recovery/
 **/.lidar_label_tool.lock
+**/.session.lock
 
 # Local environment variables and user-only configuration
 .env

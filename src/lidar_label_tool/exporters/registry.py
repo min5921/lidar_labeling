@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from lidar_label_tool.exporters.base import LabelExporter
+from lidar_label_tool.exporters.centerpoint_intermediate_json import (
+    CenterPointIntermediateJsonExporter,
+)
 from lidar_label_tool.exporters.lidar_label_json import LidarLabelJsonExporter
 
 
@@ -31,4 +34,5 @@ class ExporterRegistry:
 def create_default_registry() -> ExporterRegistry:
     registry = ExporterRegistry()
     registry.register(LidarLabelJsonExporter())
+    registry.register(CenterPointIntermediateJsonExporter())
     return registry

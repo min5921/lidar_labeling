@@ -7,8 +7,12 @@ from pathlib import Path
 import sys
 
 from lidar_label_tool.app.config import default_config_path, load_config
+from lidar_label_tool.exporters import create_default_registry, export_frames
+from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
+from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
+from lidar_label_tool.services.frame_session import FrameSessionService
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -27,6 +31,20 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         nargs="?",
         help="dataset root; omit it to select a folder in the GUI",
+    )
+    export_parser = subparsers.add_parser(
+        "export", help="explicitly export labels without changing working labels"
+    )
+    export_parser.add_argument("dataset", type=Path)
+    export_parser.add_argument("--format", required=True, dest="export_format")
+    export_parser.add_argument("--output", required=True, type=Path)
+    export_parser.add_argument(
+        "--frame", action="append", dest="frames", help="frame id; repeat for multiple frames"
+    )
+    export_parser.add_argument(
+        "--workspace",
+        type=Path,
+        help="separate workspace root used for working labels",
     )
     return parser
 
@@ -79,6 +97,56 @@ def _inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _export(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    adapter = open_dataset_adapter(args.dataset)
+    index = adapter.scan()
+    repository = (
+        LabelRepository.for_workspace(args.workspace, index.dataset_id)
+        if args.workspace is not None
+        else LabelRepository.for_sidecar(args.dataset, index.dataset_id)
+    )
+    importer = WaymoLabelImporter(
+        config["source_class_mappings"],
+        source_format=(
+            "device_centric_json"
+            if isinstance(adapter, DeviceCentricAdapter)
+            else "waymo_frame_json"
+        ),
+    )
+    session = FrameSessionService(adapter, importer, repository)
+    frame_ids = tuple(args.frames) if args.frames else index.frame_ids
+    unknown = sorted(set(frame_ids) - set(index.frame_ids))
+    if unknown:
+        raise ValueError(f"unknown frame id(s): {', '.join(unknown)}")
+    labels = tuple(session.open_frame(frame_id).label for frame_id in frame_ids)
+    exporter = create_default_registry().get(args.export_format)
+    output = Path(args.output)
+    exported: tuple[Path, ...]
+    if len(labels) == 1 and output.suffix:
+        exporter.export_frame(labels[0], output)
+        exported = (output,)
+    else:
+        if len(labels) > 1 and output.suffix and not output.is_dir():
+            raise ValueError("multiple-frame output must be a directory, not a JSON path")
+        if output.exists() and not output.is_dir():
+            raise ValueError("multiple-frame output must be a directory")
+        exported = export_frames(labels, exporter, output)
+    print(
+        json.dumps(
+            {
+                "format": exporter.name,
+                "dataset_id": index.dataset_id,
+                "frames": len(exported),
+                "output": str(output),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -88,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
             from lidar_label_tool.app.gui import run_gui
 
             return run_gui(args.dataset, args.config)
+        if args.command == "export":
+            return _export(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

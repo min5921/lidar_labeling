@@ -5,7 +5,14 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
+from lidar_label_tool.io.adapters.factory import open_dataset_adapter
+from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.services.dataset_preflight import inspect_dataset
+from lidar_label_tool.services.session_lock import (
+    SessionLock,
+    SessionLockExistsError,
+    SessionLockInfo,
+)
 from lidar_label_tool.ui.main_window import MainWindow
 
 
@@ -37,6 +44,72 @@ def _choose_workspace(dataset_root: Path, write_error: str | None) -> Path | Non
         str(Path.home()),
     )
     return Path(selected) if selected else None
+
+
+def _acquire_session_lock(
+    dataset_root: Path, workspace_root: Path | None
+) -> SessionLock | None:
+    index = open_dataset_adapter(dataset_root).scan()
+    repository = (
+        LabelRepository.for_workspace(workspace_root, index.dataset_id)
+        if workspace_root is not None
+        else LabelRepository.for_sidecar(dataset_root, index.dataset_id)
+    )
+    lock = SessionLock(repository.annotation_dir)
+    inspection = lock.inspect()
+    force = inspection.status in {"stale", "malformed"}
+    if inspection.status == "active":
+        info = inspection.info
+        details = (
+            f"호스트: {info.hostname}\nPID: {info.pid}\n"
+            f"사용자: {info.username or '알 수 없음'}\n시작: {info.started_at_utc}"
+            if info is not None
+            else "세션 정보 없음"
+        )
+        answer = QMessageBox.question(
+            None,
+            "이미 열린 데이터셋",
+            "이 데이터셋을 편집 중인 세션이 있습니다. 동시에 편집하면 저장 충돌이 "
+            f"발생할 수 있습니다.\n\n{details}\n\n그래도 계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return None
+        force = True
+    elif inspection.status == "malformed":
+        QMessageBox.warning(
+            None,
+            "손상된 세션 잠금 교체",
+            "기존 세션 잠금 파일을 읽을 수 없어 새 잠금으로 교체합니다.\n\n"
+            f"{inspection.error or '형식 오류'}",
+        )
+    info = SessionLockInfo.current(
+        dataset_id=index.dataset_id,
+        dataset_root=dataset_root,
+        workspace_root=workspace_root,
+    )
+    try:
+        lock.acquire(info, force=force)
+    except SessionLockExistsError as exc:
+        raced = exc.inspection.info
+        raced_details = (
+            f"호스트: {raced.hostname}\nPID: {raced.pid}\n시작: {raced.started_at_utc}"
+            if raced is not None
+            else exc.inspection.status
+        )
+        answer = QMessageBox.question(
+            None,
+            "동시에 생성된 세션 잠금",
+            "데이터셋을 여는 동안 다른 세션이 잠금을 생성했습니다.\n\n"
+            f"{raced_details}\n\n그래도 계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return None
+        lock.acquire(info, force=True)
+    return lock
 
 
 def run_gui(dataset_root: Path | None, config_path: Path) -> int:
@@ -89,9 +162,26 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
                 selected_root = None
                 continue
 
+        session_lock: SessionLock | None = None
         try:
-            window = MainWindow(selected_root, config_path, workspace_root)
+            session_lock = _acquire_session_lock(selected_root, workspace_root)
+            if session_lock is None:
+                if not interactive_selection:
+                    return 0
+                selected_root = None
+                continue
+            window = MainWindow(
+                selected_root,
+                config_path,
+                workspace_root,
+                session_lock=session_lock,
+            )
         except (OSError, ValueError, KeyError) as exc:
+            if session_lock is not None:
+                try:
+                    session_lock.release()
+                except OSError:
+                    pass
             _show_open_error(selected_root, exc)
             if not interactive_selection:
                 return 2

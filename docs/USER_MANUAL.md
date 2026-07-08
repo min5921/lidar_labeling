@@ -247,6 +247,19 @@ dataset/
 
 원본 파일인 `<frame>\labels\*.json`은 변경하지 않는다.
 
+저장되지 않은 변경이 있으면 기본 30초 간격으로 다음 위치에 복구본을 원자적으로 기록한다.
+
+```text
+<dataset>\annotations\lidar_label_tool\.recovery\<frame_id>.recovery.json
+```
+
+복구본은 정상 작업 JSON을 덮어쓰지 않는다. 다음 실행에서 저장된 작업 JSON보다 새로운 복구본이
+발견되면 `복구본 복원`, `이번 실행에서 무시`, `복구본 삭제` 중 하나를 직접 선택한다. 정상 저장에
+성공하면 해당 프레임의 복구본은 삭제된다.
+
+동일 데이터셋을 다른 GUI가 열고 있으면 `.session.lock` 정보와 함께 경고한다. 먼저 열린 프로그램을
+종료하고 여는 것이 안전하다. 비정상 종료로 남은 잠금은 PID 확인 후 stale 잠금으로 교체된다.
+
 저장 확인 절차:
 
 1. 객체의 x 값을 기록한다.
@@ -297,6 +310,20 @@ dataset/
 
 데이터셋을 열 때 저장 가능 여부를 먼저 시험한다. 읽기 전용 데이터셋이면 안내에 따라 별도 작업 폴더를 선택한다.
 
+### 명시적 라벨 export
+
+일반 저장은 export를 자동 실행하지 않는다. 소스 설치 환경의 PowerShell에서 별도로 실행한다.
+
+```powershell
+lidar-label-tool export <dataset> --format lidar_label_json --output <output-folder>
+lidar-label-tool export <dataset> --format centerpoint_intermediate_json --output <output-folder>
+```
+
+특정 프레임만 내보내려면 `--frame <frame_id>`를 사용하며 여러 번 지정할 수 있다. 별도 작업 폴더를
+사용했다면 `--workspace <workspace-root>`를 함께 지정한다. `centerpoint_intermediate_json`은
+좌표와 radian yaw를 전달하기 위한 중간 JSON이며 공식 CenterPoint/OpenPCDet 학습 포맷이라고
+간주하면 안 된다.
+
 ### 3D 화면이 비어 있는 경우
 
 - OpenGL driver를 확인한다.
@@ -307,7 +334,9 @@ dataset/
 ## 18. 아직 지원하지 않는 기능
 
 - 원본 멀티 LiDAR 자동 calibration 추정
-- 비정상 종료 recovery와 session lock
 - frame reviewed/skipped workflow
 - source-compatible 별도 export
-- Python 미설치 PC용 portable 배포본
+- GUI export 대화상자
+- 코드 서명된 최종 portable ZIP과 clean-PC 최종 인증
+
+Windows 포터블 빌드는 `docs/17_WINDOWS_PORTABLE_BUILD.md` 절차로 생성할 수 있다.

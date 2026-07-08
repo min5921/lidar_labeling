@@ -11,6 +11,25 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.command, "gui")
         self.assertIsNone(args.dataset)
 
+    def test_export_arguments(self) -> None:
+        args = _parser().parse_args(
+            [
+                "export",
+                "dataset",
+                "--format",
+                "centerpoint_intermediate_json",
+                "--output",
+                "exported",
+                "--frame",
+                "000001",
+                "--frame",
+                "000002",
+            ]
+        )
+        self.assertEqual(args.command, "export")
+        self.assertEqual(args.frames, ["000001", "000002"])
+        self.assertEqual(args.export_format, "centerpoint_intermediate_json")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from lidar_label_tool.app.config import load_config
+from lidar_label_tool import __version__
 from lidar_label_tool.calibration.waymo_camera import (
     CameraCalibration,
     ProjectedWireframe,
@@ -48,6 +49,8 @@ from lidar_label_tool.io.labels.json_repository import LabelConflictError, Label
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
 from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
+from lidar_label_tool.services.recovery import RecoveryStore
+from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
 from lidar_label_tool.ui.views import (
     BevView,
@@ -70,6 +73,7 @@ class MainWindow(QMainWindow):
         dataset_root: Path,
         config_path: Path,
         workspace_root: Path | None = None,
+        session_lock: SessionLock | None = None,
     ) -> None:
         super().__init__()
         self.dataset_root = Path(dataset_root)
@@ -90,6 +94,9 @@ class MainWindow(QMainWindow):
             else LabelRepository.for_sidecar(self.dataset_root, self.index.dataset_id)
         )
         self.workspace_root = workspace_root
+        self.session_lock = session_lock
+        self.recovery_store = RecoveryStore(self.repository.annotation_dir)
+        self._ignored_recovery_frames: set[str] = set()
         self.camera_calibrations: dict[str, CameraCalibration] = {}
         if isinstance(self.adapter, WaymoFrameCentricAdapter):
             for data in self.adapter.segment.get("camera_calibrations", []):
@@ -126,6 +133,12 @@ class MainWindow(QMainWindow):
         self.resize(1600, 980)
         self._build_ui()
         self._populate_index()
+        self.recovery_timer = QTimer(self)
+        self.recovery_timer.setInterval(
+            max(1, int(self.config["editing"]["recovery_interval_s"])) * 1000
+        )
+        self.recovery_timer.timeout.connect(self._write_recovery_snapshot)
+        self.recovery_timer.start()
         self._request_frame(self.index.frame_ids[0])
 
     def _build_ui(self) -> None:
@@ -487,10 +500,12 @@ class MainWindow(QMainWindow):
         self.history = AnnotationHistory.start(
             payload.label, limit=int(self.config["editing"]["history_limit"])
         )
+        recovery_status = self._offer_recovery(payload)
         carried_ids: tuple[str, ...] = ()
         carried_selection: str | None = None
         if (
-            self.carry_forward_check.isChecked()
+            recovery_status != "restored"
+            and self.carry_forward_check.isChecked()
             and payload.source.frame_id == self._pending_carry_target
             and self._pending_carried_objects
         ):
@@ -529,6 +544,7 @@ class MainWindow(QMainWindow):
             f"{payload.source.frame_id} · {point_count:,} points · "
             f"{len(current_label.objects)} objects"
             + (f" · 새 박스 {len(carried_ids)}개 이어받음" if carried_ids else "")
+            + (" · 복구본 복원됨" if recovery_status == "restored" else "")
         )
         warning_messages = [
             f"{name}: {message}" for name, message in payload.sensor_errors.items()
@@ -541,6 +557,78 @@ class MainWindow(QMainWindow):
         self.status_message.setText(status_text)
         self.status_message.setToolTip("\n".join(warning_messages))
         self._update_calibration_badge(payload)
+
+    def _offer_recovery(self, payload: FrameLoadPayload) -> str | None:
+        frame_id = payload.source.frame_id
+        if frame_id in self._ignored_recovery_frames:
+            return None
+        result = self.recovery_store.inspect(frame_id)
+        if result.error is not None:
+            self._ignored_recovery_frames.add(frame_id)
+            QMessageBox.warning(
+                self,
+                "복구 파일을 읽을 수 없음",
+                "복구 파일이 손상되었거나 형식이 올바르지 않습니다. "
+                "정상 라벨은 그대로 열었습니다.\n\n"
+                f"{result.error}\n\n"
+                f"파일: {self.recovery_store.path_for(frame_id)}",
+            )
+            return "invalid"
+        snapshot = result.snapshot
+        working_path = self.repository.path_for(frame_id)
+        if (
+            snapshot is None
+            or snapshot.dataset_id != self.index.dataset_id
+            or not self.recovery_store.is_newer_than_working(frame_id, working_path)
+        ):
+            return None
+
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("저장되지 않은 복구본 발견")
+        dialog.setText(
+            f"{frame_id} 프레임에 저장된 작업 라벨보다 새로운 복구본이 있습니다."
+        )
+        dialog.setInformativeText(
+            f"복구 시각: {snapshot.created_at_utc}\n"
+            f"기준 revision: {snapshot.base_revision}\n\n"
+            "자동으로 복원하지 않습니다. 수행할 작업을 선택하세요."
+        )
+        restore_button = dialog.addButton("복구본 복원", QMessageBox.ButtonRole.AcceptRole)
+        ignore_button = dialog.addButton("이번 실행에서 무시", QMessageBox.ButtonRole.RejectRole)
+        delete_button = dialog.addButton("복구본 삭제", QMessageBox.ButtonRole.DestructiveRole)
+        dialog.setDefaultButton(restore_button)
+        dialog.exec()
+        clicked = dialog.clickedButton()
+        if clicked is restore_button:
+            if self.history is not None:
+                self.history.apply(snapshot.label)
+            return "restored"
+        if clicked is delete_button:
+            try:
+                self.recovery_store.delete(frame_id)
+            except OSError as exc:
+                QMessageBox.warning(self, "복구본 삭제 실패", str(exc))
+            return "deleted"
+        if clicked is ignore_button:
+            self._ignored_recovery_frames.add(frame_id)
+        return "ignored"
+
+    def _write_recovery_snapshot(self) -> None:
+        if self.history is None or not self.history.dirty:
+            return
+        label = self.history.current
+        try:
+            self.recovery_store.write(
+                label,
+                base_revision=self.history.baseline.revision,
+                working_label_path=self.repository.path_for(label.frame_id),
+                tool_version=__version__,
+            )
+        except (OSError, ValueError) as exc:
+            self.status_message.setText(
+                f"복구본 저장 실패 · 정상 라벨은 영향 없음 · {type(exc).__name__}: {exc}"
+            )
 
     def _source_sensor_status(self, payload: FrameLoadPayload) -> Mapping[str, Any]:
         source_status = payload.source.metadata.get("sensor_status", {})
@@ -1198,9 +1286,14 @@ class MainWindow(QMainWindow):
         self.history.mark_saved(saved)
         if self.payload is not None:
             self.payload = replace(self.payload, label=saved, label_origin="working")
+        recovery_warning = ""
+        try:
+            self.recovery_store.delete(saved.frame_id)
+        except OSError as exc:
+            recovery_warning = f" · 복구본 삭제 실패: {exc}"
         self.status_message.setText(
             f"저장 완료 · revision {saved.revision} · "
-            f"{self.repository.path_for(saved.frame_id)}"
+            f"{self.repository.path_for(saved.frame_id)}{recovery_warning}"
         )
         self._update_edit_state()
         return True
@@ -1311,6 +1404,21 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self._closing = True
+        self.recovery_timer.stop()
         self.request_generation += 1
         self.executor.shutdown(wait=False, cancel_futures=True)
+        if self.session_lock is not None:
+            try:
+                released = self.session_lock.release()
+            except OSError as exc:
+                QMessageBox.warning(
+                    self,
+                    "세션 잠금 해제 실패",
+                    f"프로그램은 종료하지만 잠금 파일을 삭제하지 못했습니다.\n\n{exc}",
+                )
+            else:
+                if not released:
+                    self.status_message.setText(
+                        "세션 잠금이 다른 세션으로 교체되어 현재 잠금을 삭제하지 않았습니다."
+                    )
         super().closeEvent(event)
