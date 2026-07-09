@@ -42,6 +42,7 @@ from lidar_label_tool.calibration.waymo_camera import (
 )
 from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
+from lidar_label_tool.geometry.box_fit import fit_box_bottom_to_points
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.adapters.frame_centric_waymo import WaymoFrameCentricAdapter
@@ -396,6 +397,7 @@ class MainWindow(QMainWindow):
         self.class_combo = self.object_editor_panel.class_combo
         self.box_spins = self.object_editor_panel.box_spins
         self.delete_button = self.object_editor_panel.delete_button
+        self.fit_floor_button = self.object_editor_panel.fit_floor_button
         self.undo_button = self.object_editor_panel.undo_button
         self.redo_button = self.object_editor_panel.redo_button
         self.save_button = self.object_editor_panel.save_button
@@ -404,6 +406,7 @@ class MainWindow(QMainWindow):
         for spin in self.box_spins.values():
             spin.editingFinished.connect(self._commit_editor)
         self.delete_button.clicked.connect(self._delete_selected)
+        self.fit_floor_button.clicked.connect(self._fit_selected_box_to_points)
         self.undo_button.clicked.connect(self._undo)
         self.redo_button.clicked.connect(self._redo)
         self.save_button.clicked.connect(self._save_working_label)
@@ -1097,6 +1100,7 @@ class MainWindow(QMainWindow):
         try:
             self.class_combo.setEnabled(enabled)
             self.delete_button.setEnabled(enabled)
+            self.fit_floor_button.setEnabled(enabled)
             for spin in self.box_spins.values():
                 spin.setEnabled(enabled)
             if selected is None:
@@ -1224,19 +1228,25 @@ class MainWindow(QMainWindow):
         )
         box_length = max(0.05, length if length is not None else default_length)
         box_width = max(0.05, width if width is not None else default_width)
+        initial_box = Box3D(
+            x=x,
+            y=y,
+            z=height / 2.0,
+            length=box_length,
+            width=box_width,
+            height=height,
+            yaw=0.0,
+        )
+        fitted_box = fit_box_bottom_to_points(initial_box, self._active_clouds())
+        box3d = fitted_box if fitted_box is not None else initial_box
         new_object = LabeledObject(
             id=uuid4().hex,
             class_name=class_name,
-            box3d=Box3D(
-                x=x,
-                y=y,
-                z=height / 2.0,
-                length=box_length,
-                width=box_width,
-                height=height,
-                yaw=0.0,
-            ),
-            source={"created_by": "lidar_label_tool"},
+            box3d=box3d,
+            source={
+                "created_by": "lidar_label_tool",
+                "z_initialization": "point_floor" if fitted_box is not None else "default_floor_zero",
+            },
         )
         self._detail_reset_requested = True
         self.create_button.setChecked(False)
@@ -1247,6 +1257,27 @@ class MainWindow(QMainWindow):
                 frame_status="in_progress",
             ),
             new_object.id,
+        )
+
+    def _fit_selected_box_to_points(self, *_: Any) -> None:
+        selected = self._selected_object()
+        label = self._current_label()
+        if selected is None or label is None:
+            self.status_message.setText("포인트 바닥 맞춤 실패 — 선택된 객체가 없습니다.")
+            return
+        fitted_box = fit_box_bottom_to_points(selected.box3d, self._active_clouds())
+        if fitted_box is None:
+            self.status_message.setText(
+                "포인트 바닥 맞춤 실패 — 박스 footprint 안쪽 포인트가 부족합니다."
+            )
+            return
+        edited = replace(selected, box3d=fitted_box)
+        objects = tuple(edited if obj.id == selected.id else obj for obj in label.objects)
+        self._apply_edited_label(
+            replace(label, objects=objects, frame_status="in_progress"), selected.id
+        )
+        self.status_message.setText(
+            f"{selected.class_name} {selected.id[:8]} z를 포인트 바닥 기준으로 보정했습니다."
         )
 
     def _delete_selected(self, *_: Any) -> None:

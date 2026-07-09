@@ -48,8 +48,13 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 16. `docs/16_IMPLEMENTATION_REVIEW.md`
 17. `docs/17_WINDOWS_PORTABLE_BUILD.md`
 18. `docs/18_PREFLIGHT_AND_QA.md`
+19. `docs/19_TRIAL_RUN_MANUAL.md`
+20. `docs/20_ONE_CHIP_CONVERSION_MANUAL.md`
+21. `docs/21_COMMIT_UPDATE_LOG.md`
 
-실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다.
+실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다. 실제 데이터로 써보고
+피드백을 남길 때는 [`docs/19_TRIAL_RUN_MANUAL.md`](docs/19_TRIAL_RUN_MANUAL.md)를 순서대로
+따라가면 된다.
 
 ## 프로젝트 구조
 

@@ -48,6 +48,12 @@ class ObjectEditorPanel(QGroupBox):
         self.delete_button = QPushButton("삭제")
         layout.addRow(self.delete_button)
 
+        self.fit_floor_button = QPushButton("포인트 바닥에 맞춤")
+        self.fit_floor_button.setToolTip(
+            "선택 박스의 XY footprint 안쪽 포인트를 기준으로 z를 자동 보정합니다."
+        )
+        layout.addRow(self.fit_floor_button)
+
         history_row = QHBoxLayout()
         self.undo_button = QPushButton("Undo")
         self.redo_button = QPushButton("Redo")
