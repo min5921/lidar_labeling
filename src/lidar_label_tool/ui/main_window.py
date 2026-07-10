@@ -50,6 +50,10 @@ from lidar_label_tool.io.labels.json_repository import LabelConflictError, Label
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
 from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
+from lidar_label_tool.services.frame_session import (
+    compare_label_context,
+    refresh_label_context,
+)
 from lidar_label_tool.services.recovery import RecoveryStore
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
@@ -99,6 +103,7 @@ class MainWindow(QMainWindow):
         self.session_lock = session_lock
         self.recovery_store = RecoveryStore(self.repository.annotation_dir)
         self._ignored_recovery_frames: set[str] = set()
+        self._warned_context_frames: set[str] = set()
         self.camera_calibrations: dict[str, CameraCalibration] = {}
         if isinstance(self.adapter, WaymoFrameCentricAdapter):
             for data in self.adapter.segment.get("camera_calibrations", []):
@@ -603,12 +608,26 @@ class MainWindow(QMainWindow):
         ] + [
             f"{name} layer: {message}"
             for name, message in payload.reference_layer_errors.items()
-        ]
+        ] + [issue.message for issue in payload.context_issues]
         if warning_messages:
             status_text += f" · ⚠ 로드 경고 {len(warning_messages)}개"
         self.status_message.setText(status_text)
         self.status_message.setToolTip("\n".join(warning_messages))
         self._update_calibration_badge(payload)
+        self._show_context_warning(payload)
+
+    def _show_context_warning(self, payload: FrameLoadPayload) -> None:
+        frame_id = payload.source.frame_id
+        if not payload.context_issues or frame_id in self._warned_context_frames:
+            return
+        self._warned_context_frames.add(frame_id)
+        QMessageBox.warning(
+            self,
+            "원본 또는 calibration 변경 감지",
+            "현재 작업 라벨을 만든 뒤 기준 파일이 달라졌습니다.\n\n"
+            + "\n".join(f"- {issue.message}" for issue in payload.context_issues)
+            + "\n\n박스와 camera projection을 다시 확인한 뒤 저장하세요.",
+        )
 
     def _offer_recovery(self, payload: FrameLoadPayload) -> str | None:
         frame_id = payload.source.frame_id
@@ -1383,7 +1402,7 @@ class MainWindow(QMainWindow):
         ] + [
             f"{name} layer: {message}"
             for name, message in self.payload.reference_layer_errors.items()
-        ]
+        ] + [issue.message for issue in self.payload.context_issues]
         dirty = bool(self.history and self.history.dirty)
         self.frame_status_badge.setText(
             f"{label.frame_id} · 로드 {loaded:,}/표시 {self._rendered_point_count:,} · "
@@ -1426,8 +1445,36 @@ class MainWindow(QMainWindow):
             and self.payload.label_origin == "working"
         ):
             return True
+        label_to_save = self.history.current
+        if self.payload is not None:
+            context_issues = compare_label_context(label_to_save, self.payload.source)
+            if context_issues:
+                answer = QMessageBox.question(
+                    self,
+                    "변경된 기준 파일 확인",
+                    "저장 전에 원본 또는 calibration 변경을 감지했습니다.\n\n"
+                    + "\n".join(f"- {issue.message}" for issue in context_issues)
+                    + "\n\n현재 편집 내용을 새 기준으로 저장하시겠습니까? "
+                    "원본 라벨을 자동으로 다시 가져오지는 않습니다.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                    QMessageBox.StandardButton.Cancel,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    return False
+                try:
+                    label_to_save = refresh_label_context(
+                        label_to_save, self.payload.source
+                    )
+                except (OSError, ValueError) as exc:
+                    QMessageBox.critical(
+                        self,
+                        "기준 파일 확인 실패",
+                        "현재 source/calibration fingerprint를 기록하지 못해 저장을 중단했습니다.\n\n"
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                    return False
         try:
-            saved = self.repository.save(self.history.current)
+            saved = self.repository.save(label_to_save)
         except (OSError, ValueError, LabelConflictError) as exc:
             self.status_message.setText(f"저장 실패 — {type(exc).__name__}: {exc}")
             QMessageBox.critical(
@@ -1439,7 +1486,12 @@ class MainWindow(QMainWindow):
             return False
         self.history.mark_saved(saved)
         if self.payload is not None:
-            self.payload = replace(self.payload, label=saved, label_origin="working")
+            self.payload = replace(
+                self.payload,
+                label=saved,
+                label_origin="working",
+                context_issues=(),
+            )
         recovery_warning = ""
         try:
             self.recovery_store.delete(saved.frame_id)

@@ -16,6 +16,7 @@
     "schema_version": { "const": "1.0" },
     "dataset_id": { "type": "string", "minLength": 1 },
     "layout": { "const": "device_centric" },
+    "storage_layout": { "enum": ["simple", "legacy"] },
     "reference_frame": { "type": "string", "minLength": 1 },
     "primary_lidar": { "type": "string", "minLength": 1 },
     "sensors": {

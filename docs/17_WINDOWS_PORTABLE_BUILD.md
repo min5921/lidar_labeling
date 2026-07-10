@@ -38,6 +38,16 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 반복 빌드 중 테스트를 별도로 완료한 경우에만 `-SkipTests`를 사용할 수 있다.
 
+의존성이 이미 설치된 build venv를 재사용하고 네트워크 설치를 생략하려면 다음처럼 실행한다.
+새 build venv에는 사용할 수 없다.
+
+```powershell
+.\packaging\build_windows_portable.ps1 `
+  -PythonCommand .\.venv\Scripts\python.exe `
+  -VenvDirectory .build\windows-portable-venv-py312 `
+  -SkipTests -SkipDependencyInstall
+```
+
 ## 결과물과 실행
 
 실행 파일은 다음 위치에 생성된다.
@@ -48,6 +58,28 @@ dist\LiDARLabelTool\LiDARLabelTool.exe
 
 `LiDARLabelTool` 폴더 전체가 배포 단위다. EXE 하나만 복사하면 Qt/OpenGL 런타임이 누락되어
 실행되지 않는다. 실행하면 데이터셋 폴더 선택 창이 열린다.
+
+## 배포 폴더와 ZIP 패키징
+
+`dist` 빌드가 끝나면 최종 전달용 폴더, 실행 배치, 매뉴얼, ZIP, SHA-256을 재현 가능하게 만든다.
+
+```powershell
+.\packaging\package_windows_release.ps1 `
+  -ReleaseName LiDARLabelTool_Portable_YYYYMMDD_rN `
+  -DefaultDatasetPath E:\one_chip_converted
+```
+
+결과:
+
+```text
+release_packages/
+├─ LiDARLabelTool_Portable_YYYYMMDD_rN/
+├─ LiDARLabelTool_Portable_YYYYMMDD_rN.zip
+└─ LiDARLabelTool_Portable_YYYYMMDD_rN.sha256.txt
+```
+
+동일 이름의 결과가 이미 있으면 스크립트는 덮어쓰지 않고 중단한다. 기본 데이터셋 경로는 생성된
+`Open_Configured_Dataset.bat`의 `DATASET` 한 줄에서도 바꿀 수 있다.
 
 ## 깨끗한 PC 검증 절차
 
@@ -74,3 +106,5 @@ dist\LiDARLabelTool\LiDARLabelTool.exe
 - GUI 전용 EXE에는 콘솔 CLI가 포함되지 않는다. CLI가 필요하면 소스 설치 후
   `lidar-label-tool` 명령을 사용한다.
 - 최종 배포 전 third-party license 목록과 바이러스 검사 결과를 릴리스 기록에 남겨야 한다.
+- crash log는 EXE 옆이 아니라
+  `%LOCALAPPDATA%\LiDARLabelTool\logs\LiDARLabelTool_crash.log`에 기록된다.

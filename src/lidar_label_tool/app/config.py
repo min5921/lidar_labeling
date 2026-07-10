@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -22,7 +23,7 @@ def load_config(path: Path) -> dict[str, Any]:
 def default_config_path(project_root: Path | None = None) -> Path:
     if project_root is not None:
         return project_root / "configs" / "default.json"
-    cwd_candidate = Path.cwd() / "configs" / "default.json"
-    if cwd_candidate.is_file():
-        return cwd_candidate
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(frozen_root) / "configs" / "default.json"
     return Path(__file__).resolve().parents[3] / "configs" / "default.json"

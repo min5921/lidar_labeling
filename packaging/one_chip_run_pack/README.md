@@ -8,6 +8,8 @@
 원본 경로, calibration 경로, 변환/export 위치는 `.bat`를 고치지 말고
 `scripts/convert_one_chip_dataset.py` 맨 위의 `User-editable defaults` 블록에서 바꾼다.
 현재 one_chip 데이터의 sync 기본값은 `DEFAULT_TIMESTAMP_SOURCE = "header_aligned"`이다.
+새 전체 변환의 기본 폴더 구조는 `lidar\`, `cam_left\`, `cam_right\` 단순 구조다.
+예전 `sensors\lidar\MERGED\frames` 구조가 필요하면 변환 명령에 `--dataset-layout legacy`를 붙인다.
 
 권장 순서:
 

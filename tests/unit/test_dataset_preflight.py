@@ -4,6 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from lidar_label_tool.io.adapters.factory import open_dataset_adapter
+from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
+from lidar_label_tool.services.frame_session import FrameSessionService
 from lidar_label_tool.services.dataset_preflight import (
     probe_writable_directory,
     validate_dataset,
@@ -99,6 +103,29 @@ class DatasetPreflightTests(unittest.TestCase):
             self.assertTrue(
                 any(issue.code == "unknown_source_class" for issue in report.issues)
             )
+
+    def test_changed_source_label_is_reported_for_existing_working_label(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_device_dataset(root)
+            source_path = write_source_labels(
+                root, "000000", [source_object("source-1")]
+            )
+            adapter = open_dataset_adapter(root)
+            repository = LabelRepository.for_sidecar(root, "preflight_fixture")
+            opened = FrameSessionService(
+                adapter, WaymoLabelImporter(CLASS_MAPPING), repository
+            ).open_frame("000000")
+            repository.save(opened.label)
+            write_source_labels(root, "000000", [source_object("source-2")])
+
+            report = validate_dataset(root, class_mapping=CLASS_MAPPING)
+
+            self.assertEqual(report.exit_code, 1)
+            issue = next(issue for issue in report.issues if issue.code == "source_changed")
+            self.assertEqual(issue.frame_id, "000000")
+            self.assertEqual(issue.path, repository.path_for("000000"))
+            self.assertTrue(source_path.is_file())
 
 
 if __name__ == "__main__":

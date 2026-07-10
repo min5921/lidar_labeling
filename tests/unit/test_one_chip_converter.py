@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 
 import numpy as np
+
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None
 
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "convert_one_chip_dataset.py"
@@ -191,6 +197,47 @@ class OneChipConverterTests(unittest.TestCase):
         sample, delta = converter.nearest_sample(3_000, samples, 500)
         self.assertIsNone(sample)
         self.assertEqual(delta, -1_000)
+
+    def test_one_chip_manifest_defaults_to_simple_physical_paths(self) -> None:
+        layout = converter.dataset_layout_paths("simple")
+        manifest = converter._manifest("dataset", "robosense", layout)
+        sensors = {sensor["id"]: sensor for sensor in manifest["sensors"]}
+
+        self.assertEqual(manifest["storage_layout"], "simple")
+        self.assertEqual(
+            sensors["MERGED"]["data_patterns"]["return1"],
+            "lidar/{sample_id}.bin",
+        )
+        self.assertEqual(
+            sensors["CAM_LEFT"]["data_patterns"]["image"],
+            "cam_left/{sample_id}.jpg",
+        )
+        self.assertEqual(
+            sensors["CAM_RIGHT"]["data_patterns"]["image"],
+            "cam_right/{sample_id}.jpg",
+        )
+
+    @unittest.skipIf(jsonschema is None, "jsonschema optional dependency is not installed")
+    def test_one_chip_manifest_matches_dataset_schema(self) -> None:
+        schema_path = Path(__file__).resolve().parents[2] / "schemas" / "dataset.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+        for layout_name in ("simple", "legacy"):
+            manifest = converter._manifest(
+                "dataset", "robosense", converter.dataset_layout_paths(layout_name)
+            )
+            jsonschema.validate(manifest, schema)
+
+    def test_one_chip_legacy_layout_remains_available(self) -> None:
+        layout = converter.dataset_layout_paths("legacy")
+        manifest = converter._manifest("dataset", "robosense", layout)
+        sensors = {sensor["id"]: sensor for sensor in manifest["sensors"]}
+
+        self.assertEqual(manifest["storage_layout"], "legacy")
+        self.assertEqual(
+            sensors["MERGED"]["data_patterns"]["return1"],
+            "sensors/lidar/MERGED/frames/{sample_id}.bin",
+        )
 
     def test_header_aligned_timestamp_preserves_header_interval_on_log_clock(self) -> None:
         message = converter.McapMessage(

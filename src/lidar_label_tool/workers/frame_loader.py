@@ -9,6 +9,7 @@ from lidar_label_tool.io.dataset import DatasetAdapter, SourceFrameData
 from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.frame_session import FrameSessionService
+from lidar_label_tool.services.frame_session import LabelContextIssue
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,7 @@ class FrameLoadPayload:
     reference_layers: Mapping[str, Any]
     sensor_errors: Mapping[str, str] = field(default_factory=dict)
     reference_layer_errors: Mapping[str, str] = field(default_factory=dict)
+    context_issues: tuple[LabelContextIssue, ...] = ()
 
 
 def _error_text(exc: Exception) -> str:
@@ -88,4 +90,5 @@ def load_frame_payload(
         reference_layers=reference_layers,
         sensor_errors=sensor_errors,
         reference_layer_errors=reference_layer_errors,
+        context_issues=opened.context_issues,
     )

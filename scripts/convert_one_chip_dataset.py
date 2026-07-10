@@ -35,6 +35,7 @@ DEFAULT_REFERENCE_FRAME = "robosense"
 DEFAULT_SYNC_TOLERANCE_MS = 70.0
 DEFAULT_TIMESTAMP_SOURCE = "header_aligned"
 DEFAULT_CAMERA_FRAME_CONVENTION = "tool_camera"
+DEFAULT_DATASET_LAYOUT = "simple"
 DEFAULT_IMAGE_MODE = "block_demosaic"
 DEFAULT_JPEG_QUALITY = 90
 DEFAULT_PROGRESS_EVERY = 100
@@ -102,6 +103,17 @@ class TimedSample:
     timestamp_ns: int
     source_bag: str
     topic_sequence: int
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetLayoutPaths:
+    name: str
+    lidar_dir: Path
+    cam_left_dir: Path
+    cam_right_dir: Path
+    lidar_pattern: str
+    cam_left_pattern: str
+    cam_right_pattern: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -921,6 +933,30 @@ def camera_sequence_qa(
     return result
 
 
+def dataset_layout_paths(layout: str) -> DatasetLayoutPaths:
+    if layout == "simple":
+        return DatasetLayoutPaths(
+            name=layout,
+            lidar_dir=Path("lidar"),
+            cam_left_dir=Path("cam_left"),
+            cam_right_dir=Path("cam_right"),
+            lidar_pattern="lidar/{sample_id}.bin",
+            cam_left_pattern="cam_left/{sample_id}.jpg",
+            cam_right_pattern="cam_right/{sample_id}.jpg",
+        )
+    if layout == "legacy":
+        return DatasetLayoutPaths(
+            name=layout,
+            lidar_dir=Path("sensors/lidar/MERGED/frames"),
+            cam_left_dir=Path("sensors/camera/CAM_LEFT/images"),
+            cam_right_dir=Path("sensors/camera/CAM_RIGHT/images"),
+            lidar_pattern="sensors/lidar/MERGED/frames/{sample_id}.bin",
+            cam_left_pattern="sensors/camera/CAM_LEFT/images/{sample_id}.jpg",
+            cam_right_pattern="sensors/camera/CAM_RIGHT/images/{sample_id}.jpg",
+        )
+    raise ValueError(f"unsupported dataset layout: {layout}")
+
+
 def write_frames_jsonl(
     path: Path,
     lidar_samples: Sequence[TimedSample],
@@ -979,11 +1015,14 @@ def write_frames_jsonl(
     }
 
 
-def _manifest(dataset_id: str, reference_frame: str) -> dict[str, object]:
+def _manifest(
+    dataset_id: str, reference_frame: str, layout_paths: DatasetLayoutPaths
+) -> dict[str, object]:
     return {
         "schema_version": "1.0",
         "dataset_id": dataset_id,
         "layout": "device_centric",
+        "storage_layout": layout_paths.name,
         "reference_frame": reference_frame,
         "primary_lidar": "MERGED",
         "sensors": [
@@ -992,7 +1031,7 @@ def _manifest(dataset_id: str, reference_frame: str) -> dict[str, object]:
                 "type": "lidar",
                 "coordinate_frame": reference_frame,
                 "data_patterns": {
-                    "return1": "sensors/lidar/MERGED/frames/{sample_id}.bin"
+                    "return1": layout_paths.lidar_pattern
                 },
                 "point_columns": list(POINT_COLUMNS),
                 "point_dtype": "float32",
@@ -1003,7 +1042,7 @@ def _manifest(dataset_id: str, reference_frame: str) -> dict[str, object]:
                 "type": "camera",
                 "coordinate_frame": "camera:CAM_LEFT",
                 "data_patterns": {
-                    "image": "sensors/camera/CAM_LEFT/images/{sample_id}.jpg"
+                    "image": layout_paths.cam_left_pattern
                 },
             },
             {
@@ -1011,7 +1050,7 @@ def _manifest(dataset_id: str, reference_frame: str) -> dict[str, object]:
                 "type": "camera",
                 "coordinate_frame": "camera:CAM_RIGHT",
                 "data_patterns": {
-                    "image": "sensors/camera/CAM_RIGHT/images/{sample_id}.jpg"
+                    "image": layout_paths.cam_right_pattern
                 },
             },
         ],
@@ -1046,6 +1085,7 @@ def convert_dataset(args: argparse.Namespace) -> None:
     source_root = Path(args.source).resolve()
     output_root = Path(args.output).resolve()
     calibration_root = Path(args.calibration).resolve()
+    layout_paths = dataset_layout_paths(args.dataset_layout)
     if output_root.exists():
         raise FileExistsError(f"output already exists: {output_root}")
     if not source_root.is_dir():
@@ -1062,7 +1102,10 @@ def convert_dataset(args: argparse.Namespace) -> None:
             camera_frame_convention=args.camera_frame_convention,
         )
         _write_json(staging / "calibration" / "calibration.json", calibration)
-        _write_json(staging / "dataset.json", _manifest(args.dataset_id, args.reference_frame))
+        _write_json(
+            staging / "dataset.json",
+            _manifest(args.dataset_id, args.reference_frame, layout_paths),
+        )
 
         all_lidar: list[TimedSample] = []
         all_left: list[TimedSample] = []
@@ -1080,7 +1123,7 @@ def convert_dataset(args: argparse.Namespace) -> None:
             left = extract_camera(
                 paths["CAM_LEFT"],
                 CAMERA_TOPICS["CAM_LEFT"],
-                staging / "sensors" / "camera" / "CAM_LEFT" / "images",
+                staging / layout_paths.cam_left_dir,
                 start_index=len(all_left),
                 bag_name=bag_root.name,
                 camera_id="CAM_LEFT",
@@ -1093,7 +1136,7 @@ def convert_dataset(args: argparse.Namespace) -> None:
             right = extract_camera(
                 paths["CAM_RIGHT"],
                 CAMERA_TOPICS["CAM_RIGHT"],
-                staging / "sensors" / "camera" / "CAM_RIGHT" / "images",
+                staging / layout_paths.cam_right_dir,
                 start_index=len(all_right),
                 bag_name=bag_root.name,
                 camera_id="CAM_RIGHT",
@@ -1105,7 +1148,7 @@ def convert_dataset(args: argparse.Namespace) -> None:
             )
             lidar = extract_lidar(
                 paths["lidar"],
-                staging / "sensors" / "lidar" / "MERGED" / "frames",
+                staging / layout_paths.lidar_dir,
                 start_index=len(all_lidar),
                 bag_name=bag_root.name,
                 timestamp_source=args.timestamp_source,
@@ -1130,6 +1173,12 @@ def convert_dataset(args: argparse.Namespace) -> None:
             "source_root": str(source_root),
             "output_root": str(output_root),
             "dataset_id": args.dataset_id,
+            "storage_layout": layout_paths.name,
+            "data_patterns": {
+                "lidar": layout_paths.lidar_pattern,
+                "CAM_LEFT": layout_paths.cam_left_pattern,
+                "CAM_RIGHT": layout_paths.cam_right_pattern,
+            },
             "timestamp_source": args.timestamp_source,
             "sync_tolerance_ms": args.sync_tolerance_ms,
             "counts": {
@@ -1278,6 +1327,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset-id", default=DEFAULT_DATASET_ID)
     parser.add_argument("--reference-frame", default=DEFAULT_REFERENCE_FRAME)
+    parser.add_argument(
+        "--dataset-layout",
+        choices=("simple", "legacy"),
+        default=DEFAULT_DATASET_LAYOUT,
+        help=(
+            "Physical output folder layout. simple writes lidar/, cam_left/, cam_right/. "
+            "legacy writes sensors/lidar/MERGED/frames and sensors/camera/.../images."
+        ),
+    )
     parser.add_argument(
         "--bag",
         action="append",

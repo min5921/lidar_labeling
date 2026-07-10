@@ -33,6 +33,9 @@ where = ["src"]
 line-length = 100
 target-version = "py310"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.mypy]
 python_version = "3.10"
 warn_unused_ignores = true

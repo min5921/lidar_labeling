@@ -299,6 +299,10 @@ projection이 이상해 보이면 다음을 기록한다.
 
 정상 저장에 성공하면 해당 frame의 recovery snapshot은 삭제된다.
 
+작업 라벨을 저장한 뒤 원본 라벨 또는 calibration 파일을 바꿔 다시 열면 변경 경고가 표시되어야
+한다. 저장을 누르면 새 기준으로 계속 저장할지 한 번 더 묻고, 취소하면 기존 working JSON을
+변경하지 않아야 한다.
+
 ## 15. 복구 snapshot 확인
 
 일반 작업에서는 앱이 비정상 종료되거나 저장하지 못했을 때를 대비해 recovery snapshot을 만든다.

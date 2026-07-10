@@ -59,6 +59,12 @@
 - 공유 LRU 렌더 캐시와 객체 선택/박스 표시/측면 평면별 렌더 무효화 분리
 - 상태 표시줄의 로드·표시 포인트, 객체, dirty, 경고, 활성 센서 요약
 - 키보드 이동·미세 이동·크기·yaw 간격의 실행 중 UI 조절
+- one_chip `header_aligned` nearest sync와 camera 반복/점프 QA report
+- 단순 `lidar/`, `cam_left/`, `cam_right/` 출력과 legacy 구조 호환
+- PyInstaller frozen resource 경로와 사용자 AppData crash log
+- 재현 가능한 portable 릴리스 폴더/ZIP/SHA-256 패키징
+- source/calibration fingerprint 변경의 preflight·GUI 경고와 저장 전 재확인
+- working label의 알 수 없는 frame/object field round-trip 보존
 
 ## 현재 샘플 검증 결과
 
@@ -71,7 +77,7 @@
 
 ## 테스트
 
-- unit/integration/schema 90개
+- unit/integration/schema 111개
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부
@@ -79,7 +85,7 @@
 
 ## 다음 구현
 
-1. 저장 직전 source fingerprint 재검사
-2. LiDAR calibration ON/OFF·수동 6DoF panel
+1. Python 미설치 clean Windows PC에서 한글/공백 경로 open/edit/save 최종 인증
+2. third-party license 묶음, 앱 아이콘, 버전 정보, 코드 서명
 3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
-4. portable Windows 배포본 생성, 코드 서명과 clean-PC 최종 검증
+4. source-compatible exporter와 GUI export 대화상자

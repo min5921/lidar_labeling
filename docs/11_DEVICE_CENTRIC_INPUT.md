@@ -3,6 +3,32 @@
 ## 권장 폴더
 
 실제 운영 데이터는 frame 폴더를 반복하지 않고 sensor/device별로 모은다.
+단일 LiDAR와 좌/우 카메라처럼 장치 구성이 고정된 배포용 dataset은 사용자에게 보이는
+폴더를 단순하게 둔다.
+
+```text
+dataset/
+├─ dataset.json
+├─ lidar/<sample_id>.bin
+├─ cam_left/<sample_id>.jpg
+├─ cam_right/<sample_id>.jpg
+├─ sync/
+│  └─ frames.jsonl
+├─ calibration/
+│  ├─ calibration.json
+│  └─ frames/<frame_id>.json
+├─ source_labels/              # 선택: 가져온 원본 라벨
+├─ annotations/
+│  └─ lidar_label_tool/        # 앱 작업 라벨
+└─ exports/                    # 명시적 원 포맷 export
+```
+
+`MERGED`, `CAM_LEFT`, `CAM_RIGHT` 같은 이름은 폴더명이 아니라 `dataset.json` 안의 논리 sensor
+ID로 남긴다. 앱은 `data_patterns`를 읽어 실제 파일 위치를 찾으므로 물리 폴더는 단순하게 둘 수
+있다.
+
+여러 LiDAR/카메라 구성이 섞이는 일반형 dataset이나 기존 변환 결과는 다음 legacy 구조도 계속
+지원한다.
 
 ```text
 dataset/
@@ -25,7 +51,8 @@ dataset/
 └─ exports/                    # 명시적 원 포맷 export
 ```
 
-앱에는 원본 LiDAR별 파일이 아니라 공통 좌표계로 사전 병합된 `MERGED` 파일 하나를 전달한다. 파일명은 연속 숫자일 필요가 없으며 sample ID 문자열로 취급한다. `.bin`과 `.pcd`를 지원한다.
+앱에는 원본 LiDAR별 파일이 아니라 공통 좌표계로 사전 병합된 논리 `MERGED` 파일 하나를 전달한다.
+파일명은 연속 숫자일 필요가 없으며 sample ID 문자열로 취급한다. `.bin`과 `.pcd`를 지원한다.
 
 ## Dataset manifest 예시
 
@@ -42,7 +69,7 @@ dataset/
       "type": "lidar",
       "coordinate_frame": "vehicle",
       "data_patterns": {
-        "return1": "sensors/lidar/MERGED/frames/{sample_id}.bin"
+        "return1": "lidar/{sample_id}.bin"
       },
       "point_dtype": "float32",
       "byte_order": "little-endian",
@@ -53,7 +80,7 @@ dataset/
       "type": "camera",
       "coordinate_frame": "camera:FRONT",
       "data_patterns": {
-        "image": "sensors/camera/FRONT/images/{sample_id}.jpg"
+        "image": "cam_front/{sample_id}.jpg"
       }
     }
   ],
@@ -111,6 +138,9 @@ adapter 자체는 working label을 읽거나 저장하지 않는다. 따라서 s
 
 두 adapter 모두 read-only source와 별도 working annotation 경로를 제공한다.
 
-`0000.bin`, `0001.bin`처럼 MERGED 폴더에 연속 저장하는 구조를 지원한다. 모든 장치가 같은 번호를 쓰면 `exact_stem`, 번호 또는 timestamp가 다르면 `frames.jsonl` index를 사용한다. sensor-local 원본은 라벨링 앱에 직접 넣지 않고 먼저 변환기로 reference-frame MERGED 파일을 만든다.
+`0000.bin`, `0001.bin`처럼 한 폴더에 연속 저장하는 구조를 지원한다. 실제 폴더명은
+`data_patterns`가 정하며, `MERGED`는 공통 좌표계 LiDAR를 뜻하는 논리 sensor ID다. 모든 장치가
+같은 번호를 쓰면 `exact_stem`, 번호 또는 timestamp가 다르면 `frames.jsonl` index를 사용한다.
+sensor-local 원본은 라벨링 앱에 직접 넣지 않고 먼저 변환기로 reference-frame LiDAR 파일을 만든다.
 
 dataset root가 쓰기 불가능해 외부 workspace를 선택하면 `<workspace>/<dataset_id>/annotations/lidar_label_tool/` 구조를 사용하여 다른 dataset의 동일 frame ID와 충돌하지 않게 한다.

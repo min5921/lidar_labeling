@@ -14,6 +14,85 @@ from lidar_label_tool.workers.frame_loader import load_frame_payload
 
 
 class DeviceCentricAdapterTests(unittest.TestCase):
+    def test_simple_one_chip_style_paths_are_loaded_from_manifest_patterns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {
+                "schema_version": "1.0",
+                "dataset_id": "simple_paths",
+                "layout": "device_centric",
+                "storage_layout": "simple",
+                "reference_frame": "robosense",
+                "primary_lidar": "MERGED",
+                "sensors": [
+                    {
+                        "id": "MERGED",
+                        "type": "lidar",
+                        "coordinate_frame": "robosense",
+                        "data_patterns": {"return1": "lidar/{sample_id}.bin"},
+                        "point_columns": ["x", "y", "z", "intensity"],
+                        "point_dtype": "float32",
+                    },
+                    {
+                        "id": "CAM_LEFT",
+                        "type": "camera",
+                        "coordinate_frame": "camera:CAM_LEFT",
+                        "data_patterns": {"image": "cam_left/{sample_id}.jpg"},
+                    },
+                    {
+                        "id": "CAM_RIGHT",
+                        "type": "camera",
+                        "coordinate_frame": "camera:CAM_RIGHT",
+                        "data_patterns": {"image": "cam_right/{sample_id}.jpg"},
+                    },
+                ],
+                "synchronization": {
+                    "mode": "index",
+                    "index_path": "sync/frames.jsonl",
+                },
+            }
+            (root / "dataset.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (root / "sync").mkdir()
+            (root / "sync" / "frames.jsonl").write_text(
+                json.dumps(
+                    {
+                        "frame_id": "000000",
+                        "timestamp_us": 1000,
+                        "samples": {
+                            "lidar:MERGED": "000000",
+                            "camera:CAM_LEFT": "000010",
+                            "camera:CAM_RIGHT": "000009",
+                        },
+                    },
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "lidar").mkdir()
+            (root / "cam_left").mkdir()
+            (root / "cam_right").mkdir()
+            np.array([[1, 2, 3, 4]], dtype="<f4").tofile(root / "lidar" / "000000.bin")
+            (root / "cam_left" / "000010.jpg").write_bytes(b"left")
+            (root / "cam_right" / "000009.jpg").write_bytes(b"right")
+
+            adapter = DeviceCentricAdapter(root)
+            index = adapter.scan()
+            source = adapter.load_source_frame(index.frame_ids[0])
+
+            self.assertEqual(index.frame_ids, ("000000",))
+            self.assertEqual(
+                source.point_cloud_paths["MERGED"][0],
+                root / "lidar" / "000000.bin",
+            )
+            self.assertEqual(source.image_paths["CAM_LEFT"], root / "cam_left" / "000010.jpg")
+            self.assertEqual(
+                source.image_paths["CAM_RIGHT"],
+                root / "cam_right" / "000009.jpg",
+            )
+            cloud = adapter.load_cloud_from_source(source, "MERGED")
+            np.testing.assert_allclose(cloud.xyz, [[1, 2, 3]])
+
     def test_numbered_device_folders_and_lidar_calibration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

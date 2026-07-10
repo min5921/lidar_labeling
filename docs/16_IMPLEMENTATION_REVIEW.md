@@ -1,6 +1,20 @@
 # 구현 재검수 결과
 
-검수일: 2026-07-06
+최초 검수일: 2026-07-06
+후속 재검수: 2026-07-10
+
+## 2026-07-10 후속 결과
+
+아래 2026-07-06 본문은 당시 snapshot이다. 이후 device 중심 입력, `MERGED` 운영 구조,
+recovery/session lock, 직접 조작 handle, preflight/stats/export, one_chip 변환·동기화·calibration
+검증, PyInstaller portable 배포본이 구현됐다.
+
+이번 후속 검수에서는 simple output manifest의 Schema 불일치, frozen config의 작업 폴더 fallback,
+EXE 옆 crash log, 수작업 릴리스 조립, source/calibration 변경 미경고, unknown working label field
+손실을 수정했다. 현재 남은 배포 Gate는 별도 Python 미설치 clean Windows PC에서의 최종
+open/edit/save 인증, 코드 서명, third-party license 정리다.
+
+## 2026-07-06 당시 snapshot
 
 ## 결론
 

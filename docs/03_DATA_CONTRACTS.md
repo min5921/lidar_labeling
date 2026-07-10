@@ -17,11 +17,9 @@ local_data/incoming/<dataset_name>/
 ```text
 dataset/
 ├─ dataset.json
-├─ sensors/
-│  ├─ lidar/
-│  │  └─ MERGED/frames/<sample_id>.bin|pcd
-│  └─ camera/
-│     └─ <camera_id>/images/<sample_id>.jpg
+├─ lidar/<sample_id>.bin|pcd
+├─ cam_left/<sample_id>.jpg
+├─ cam_right/<sample_id>.jpg
 ├─ sync/
 │  └─ frames.jsonl
 ├─ source_labels/             # 선택: 원본, 읽기 전용
@@ -32,6 +30,10 @@ dataset/
    ├─ calibration.json
    └─ frames/<frame_id>.json    # 선택적 frame override
 ```
+
+여러 센서 조합을 일반화해야 하는 경우에는 `sensors/lidar/<sensor_id>/...` 형태의 legacy 구조도
+지원한다. 실제 파일 위치는 `dataset.json`의 `data_patterns`가 결정하므로 앱은 두 구조를 모두
+같은 adapter로 읽는다.
 
 프레임 목록은 `sync/frames.jsonl`의 논리 frame을 우선 사용한다. index가 없으면 primary LiDAR sample을 기준으로 동일 stem을 매칭한다. timestamp nearest 매칭은 tolerance를 명시한 경우에만 사용한다. frame ID, sample ID, sensor ID는 문자열 그대로 보존한다.
 

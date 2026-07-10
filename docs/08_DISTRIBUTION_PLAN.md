@@ -4,7 +4,7 @@
 
 대상 사용자는 Python이나 개발 도구를 설치하지 않고 Windows 10/11 x64 PC에서 앱을 실행한다. 데이터셋은 배포본에 넣지 않고 사용자가 외부 폴더를 선택한다.
 
-## 권장 배포 전략
+## 권장 배포 전략과 현재 채택안
 
 Qt for Python의 공식 배포 도구인 `pyside6-deploy`를 우선 사용한다. 이 도구는 Nuitka를 이용하며 Windows 실행 파일을 만들고, `standalone`과 `onefile` 모드를 지원한다.
 
@@ -14,6 +14,10 @@ Qt for Python의 공식 배포 도구인 `pyside6-deploy`를 우선 사용한다
 - 단점: 여러 파일이 들어 있지만 사용자는 ZIP을 한 번만 풀면 된다.
 
 기능이 안정화되면 standalone 폴더를 설치형 EXE로 감싼다. 단일 EXE(onefile)는 배포가 간단해 보이지만 매 실행 시 압축 해제, 느린 시작, 백신 오탐 가능성 때문에 1차 기본안으로 삼지 않는다.
+
+현재 구현은 실제 PySide6/pyqtgraph/OpenGL 빌드 검증이 끝난 PyInstaller `onedir`를 채택했다.
+배포 형태와 사용자 경험은 위 standalone 원칙과 같으며, `LiDARLabelTool.exe`와 `_internal/` 폴더
+전체를 ZIP으로 전달한다. 패키저가 달라도 앱의 resource resolver와 사용자 파일 경로 계약은 같다.
 
 ## 생성 산출물
 
@@ -64,7 +68,7 @@ release/
 - [ ] 3D/BEV/side/image view가 표시된다.
 - [ ] 새 박스를 만들고 JSON을 저장·재로드한다.
 - [ ] calibration 없음 상태가 정상 동작한다.
-- [ ] calibration ON/OFF와 멀티 LiDAR 병합이 정상 동작한다.
+- [ ] reference-frame `MERGED`가 `Not required`로 열리고 camera calibration projection이 동작한다.
 - [ ] config/schema/icon이 번들에서 로드된다.
 - [ ] 로그와 사용자 설정이 쓰기 가능한 사용자 경로에 생성된다.
 - [ ] 앱 종료 후 임시 파일/프로세스가 남지 않는다.

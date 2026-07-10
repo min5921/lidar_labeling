@@ -8,6 +8,26 @@ from typing import Any, Mapping
 
 FRAME_STATUSES = {"unvisited", "in_progress", "reviewed", "skipped"}
 CALIBRATION_MODES = {"auto", "on", "off"}
+_OBJECT_KNOWN_FIELDS = {"id", "class_name", "box3d", "attributes", "source"}
+_FRAME_KNOWN_FIELDS = {
+    "schema_version",
+    "dataset_id",
+    "frame_id",
+    "revision",
+    "frame_status",
+    "saved_at_utc",
+    "point_cloud_paths",
+    "point_cloud_path",
+    "image_paths",
+    "image_path",
+    "calib_path",
+    "calibration_path",
+    "reference_frame",
+    "coordinate_system",
+    "provenance",
+    "calibration_state",
+    "objects",
+}
 
 
 def utc_now_iso() -> str:
@@ -72,6 +92,7 @@ class LabeledObject:
     box3d: Box3D
     attributes: Mapping[str, Any] = field(default_factory=dict)
     source: Mapping[str, Any] = field(default_factory=dict)
+    extra_fields: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -80,12 +101,15 @@ class LabeledObject:
             raise ValueError("class_name must not be empty")
 
     def to_dict(self) -> dict[str, Any]:
-        result: dict[str, Any] = {
-            "id": self.id,
-            "class_name": self.class_name,
-            "box3d": self.box3d.to_dict(),
-            "attributes": dict(self.attributes),
-        }
+        result: dict[str, Any] = dict(self.extra_fields)
+        result.update(
+            {
+                "id": self.id,
+                "class_name": self.class_name,
+                "box3d": self.box3d.to_dict(),
+                "attributes": dict(self.attributes),
+            }
+        )
         if self.source:
             result["source"] = dict(self.source)
         return result
@@ -98,6 +122,11 @@ class LabeledObject:
             box3d=Box3D.from_dict(data["box3d"]),
             attributes=dict(data.get("attributes", {})),
             source=dict(data.get("source", {})),
+            extra_fields={
+                str(key): value
+                for key, value in data.items()
+                if key not in _OBJECT_KNOWN_FIELDS
+            },
         )
 
 
@@ -117,6 +146,7 @@ class FrameLabel:
     coordinate_system: Mapping[str, str] = field(
         default_factory=lambda: {"x": "forward", "y": "left", "z": "up"}
     )
+    extra_fields: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.dataset_id or not self.frame_id or not self.reference_frame:
@@ -143,23 +173,27 @@ class FrameLabel:
             "source_paths": [],
             "source_fingerprints": {},
         }
-        return {
-            "schema_version": "1.0",
-            "dataset_id": self.dataset_id,
-            "frame_id": self.frame_id,
-            "revision": self.revision,
-            "frame_status": self.frame_status,
-            "saved_at_utc": self.saved_at_utc,
-            "point_cloud_paths": {
-                sensor: list(paths) for sensor, paths in self.point_cloud_paths.items()
-            },
-            "image_paths": dict(self.image_paths),
-            "reference_frame": self.reference_frame,
-            "coordinate_system": dict(self.coordinate_system),
-            "provenance": provenance,
-            "calibration_state": calibration_state,
-            "objects": [obj.to_dict() for obj in self.objects],
-        }
+        result: dict[str, Any] = dict(self.extra_fields)
+        result.update(
+            {
+                "schema_version": "1.0",
+                "dataset_id": self.dataset_id,
+                "frame_id": self.frame_id,
+                "revision": self.revision,
+                "frame_status": self.frame_status,
+                "saved_at_utc": self.saved_at_utc,
+                "point_cloud_paths": {
+                    sensor: list(paths) for sensor, paths in self.point_cloud_paths.items()
+                },
+                "image_paths": dict(self.image_paths),
+                "reference_frame": self.reference_frame,
+                "coordinate_system": dict(self.coordinate_system),
+                "provenance": provenance,
+                "calibration_state": calibration_state,
+                "objects": [obj.to_dict() for obj in self.objects],
+            }
+        )
+        return result
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> FrameLabel:
@@ -193,4 +227,9 @@ class FrameLabel:
             coordinate_system=dict(
                 data.get("coordinate_system", {"x": "forward", "y": "left", "z": "up"})
             ),
+            extra_fields={
+                str(key): value
+                for key, value in data.items()
+                if key not in _FRAME_KNOWN_FIELDS
+            },
         )

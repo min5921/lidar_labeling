@@ -15,6 +15,7 @@ from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.recovery import RecoveryStore
+from lidar_label_tool.services.frame_session import compare_label_context
 
 
 Severity = Literal["info", "warning", "error"]
@@ -457,6 +458,16 @@ def validate_dataset(
                 )
             else:
                 working_revisions.append(working.revision)
+                for context_issue in compare_label_context(working, source):
+                    issues.append(
+                        PreflightIssue(
+                            "warning",
+                            context_issue.code,
+                            context_issue.message,
+                            frame_id=frame_id,
+                            path=repository.path_for(frame_id),
+                        )
+                    )
 
     if source_label_count == 0:
         issues.append(

@@ -24,13 +24,16 @@ coverage.xml
 htmlcov/
 
 # Build and portable distribution outputs
+.build/
 build/
 dist/
 release/
+release_packages/
 .nuitka-cache/
 
 # GUI smoke-test screenshots and generated reports
 artifacts/
+outputs/
 
 # Runtime logs, crash dumps and local application state
 *.log

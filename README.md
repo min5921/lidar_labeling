@@ -23,6 +23,9 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 - 내부 `FrameLabel` JSON exporter protocol·registry 확장점 구현 완료
 - 비정상 종료 복구 snapshot과 dataset session lock 구현 완료
 - CenterPoint 중간 JSON CLI export와 Windows portable 빌드 스크립트 추가
+- 재현 가능한 portable 릴리스 폴더/ZIP/SHA-256 패키징 스크립트 추가
+- frozen 기본 설정 경로와 사용자 AppData crash log 경로 분리
+- source/calibration fingerprint 변경 감지와 unknown label field 보존
 - 전체 프레임 dataset preflight, GUI QA 요약, source/working label 통계 CLI 추가
 - export class/finite/box 크기 선검증과 다중 frame 사전 검증 추가
 
@@ -51,6 +54,9 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 19. `docs/19_TRIAL_RUN_MANUAL.md`
 20. `docs/20_ONE_CHIP_CONVERSION_MANUAL.md`
 21. `docs/21_COMMIT_UPDATE_LOG.md`
+22. `docs/22_PORTABLE_DISTRIBUTION_CHECKLIST.md`
+23. `docs/23_PORTABLE_RELEASE_MANUAL.md`
+24. `docs/24_REQUIREMENTS_REAUDIT.md`
 
 실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다. 실제 데이터로 써보고
 피드백을 남길 때는 [`docs/19_TRIAL_RUN_MANUAL.md`](docs/19_TRIAL_RUN_MANUAL.md)를 순서대로
@@ -95,7 +101,9 @@ Labelling_tool/
 
 `dataset/`은 저장소 안에 넣는 고정 폴더가 아니라 실행 시 사용자가 선택하는 외부 데이터 루트이다.
 
-첫 배포 목표는 Windows 10/11 x64에서 Python 설치 없이 실행되는 portable 폴더/ZIP이다. 기능이 안정화되면 같은 산출물을 설치형 EXE로 감싼다. 자세한 내용은 `docs/08_DISTRIBUTION_PLAN.md`를 따른다.
+현재 Windows 10/11 x64용 Python 무설치 portable 폴더/ZIP을 만들 수 있다. 배포 단위는
+`LiDARLabelTool.exe`와 `_internal/`을 함께 둔 one-folder 구조이며, 최종 clean-PC 인증과 코드 서명은
+아직 별도 검수가 필요하다. 자세한 내용은 `docs/17_WINDOWS_PORTABLE_BUILD.md`를 따른다.
 
 ## 샘플 데이터 전달 위치
 
