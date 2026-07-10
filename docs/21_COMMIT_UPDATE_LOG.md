@@ -1,8 +1,42 @@
 # 커밋별 업데이트 기록
 
 이 문서는 프로젝트 진행 중 어떤 커밋에서 무엇이 추가·수정되었는지 추적하기 위한 기록이다.
-2026-07-09 현재 `master`의 HEAD는 `c26cb7b`이며, 아래의 "현재 커밋 전 작업트리" 항목은 아직
-commit되지 않은 변경이다.
+배포 관련 변경은 `codex/portable-distribution` 브랜치에서 관리한다.
+
+## bf70370 — feat: add portable one chip distribution workflow
+
+one_chip 변환·동기화·calibration 검증과 Python 무설치 Windows 포터블 배포 workflow를 하나의
+배포 브랜치에 정리한 커밋이다.
+
+- one_chip 변환기
+  - 기본 `header_aligned` nearest sync와 camera 반복/점프 QA
+  - `lidar/`, `cam_left/`, `cam_right/` simple 구조 및 legacy 구조 호환
+  - 사용자가 스크립트 상단에서 source/output/calibration 경로를 수정할 수 있는 기본값
+- 데이터·라벨 안전성
+  - simple manifest와 dataset schema 일치
+  - source/calibration fingerprint 변경의 preflight·GUI 경고와 저장 전 확인
+  - working JSON의 알 수 없는 frame/object field 보존
+- 포터블 실행 안정성
+  - PyInstaller `_MEIPASS` resource 경로 고정
+  - crash log를 `%LOCALAPPDATA%\LiDARLabelTool\logs`에 기록
+  - 반복 빌드의 `-SkipDependencyInstall` 지원
+- 재현 가능한 릴리스 패키징
+  - `package_windows_release.ps1`로 최상위 EXE, `_internal`, launcher, 매뉴얼, ZIP, SHA-256 생성
+  - 최종 로컬 검수본 `LiDARLabelTool_Portable_20260710_r6`
+- 문서
+  - 배포 체크리스트, 릴리스 매뉴얼, 요구사항 20개 재검수 결과 추가
+  - 사용자 매뉴얼의 portable/simple-layout 설명 최신화
+
+검증 결과:
+
+- source venv와 build venv: `111 passed`
+- `ruff check .`: 통과
+- 로컬 198-frame dataset preflight: errors 0, warnings 0
+- r6 EXE와 Start launcher: 정상 실행·종료, crash log 변화 없음, session lock 잔여 없음
+- r6 ZIP: `82994162` bytes
+- SHA-256: `55477CBF38BC9E3E7B6C57EAE65BF33945213C695DA50DDC86543DFB608336B3`
+- 현재 검수 세션에는 `E:` 드라이브가 없어 r6 one_chip 실데이터 재검증은 보류
+- Python 미설치 별도 clean Windows PC 최종 인증은 보류
 
 ## 검증 기록
 
@@ -33,9 +67,9 @@ lidar-label-tool preflight E:\one_chip_converted
 → [error] dataset_root_missing E:\one_chip_converted
 ```
 
-## 현재 커밋 전 작업트리
+## 2026-07-09 당시 커밋 전 작업트리
 
-아직 commit되지 않은 변경에는 다음 작업이 포함되어 있다.
+아래 작업은 이후 `697e276` 커밋에 반영됐다.
 
 ### one_chip 실제 데이터 변환·검증 지원
 
