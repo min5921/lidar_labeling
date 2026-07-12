@@ -1,7 +1,43 @@
 # 커밋별 업데이트 기록
 
 이 문서는 프로젝트 진행 중 어떤 커밋에서 무엇이 추가·수정되었는지 추적하기 위한 기록이다.
-배포 관련 변경은 `codex/portable-distribution` 브랜치에서 관리한다.
+기존 one-folder 배포는 `codex/portable-distribution`, 통합 one-file v0.2.0은
+`codex/integrated-desktop-workflows` 브랜치에서 관리한다.
+
+## c38c48d — feat: integrate conversion workflows into desktop app
+
+PowerShell/BAT 기반 사용자 작업을 공용 service와 통합 GUI로 옮기고 단일 EXE 배포 경로를 추가한
+커밋이다.
+
+- 통합 시작 화면
+  - dataset open, 전체 변환, 재동기화, Calibration 생성·검증
+  - Preflight, label 통계, 명시적 export
+- 공용 service
+  - one_chip MCAP/CDR 변환기와 Calibration 검증기를 `src/lidar_label_tool/services`로 이동
+  - GUI와 CLI가 같은 변환·export 코드를 사용
+  - 진행 이벤트, 취소 토큰, staging 정리, sync 백업과 원자적 JSON 저장
+- 사용자 경로
+  - GUI에서 source/calibration/output을 직접 선택
+  - `%LOCALAPPDATA%\LiDARLabelTool\settings.ini`에 최근 경로 저장
+  - 기존 script/BAT 사용자는 wrapper 상단 기본 경로를 계속 직접 수정 가능
+- one-file 배포
+  - `build_windows_portable.ps1 -OneFile`
+  - version `0.2.0` Windows resource
+  - 단일 EXE release와 SHA-256 생성 스크립트
+  - third-party notice 번들 및 앱 정보 화면
+- 문서
+  - 통합 워크플로 계약, one-file 매뉴얼, r2 검수 기록 추가
+
+검증 결과:
+
+- pytest: `115 passed`
+- `ruff check .`: 통과
+- `git diff --check`: 통과
+- 최종 후보: `LiDARLabelTool_Integrated_0.2.0_r2.exe`
+- size: `82339147` bytes
+- SHA-256: `C9A6D1D3803BCDC3F08E99E5756D6AEAF4C120BDAD81FFA358BB18E1C8FF498B`
+- Windows GUI smoke: 12초 유지, crash log 변화 없음, 잔여 프로세스 0
+- 보류: `E:` one_chip 실데이터, clean PC, 코드 서명, 프로젝트 라이선스, 전용 아이콘
 
 ## bf70370 — feat: add portable one chip distribution workflow
 
