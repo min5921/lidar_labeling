@@ -108,6 +108,41 @@ class OneChipConverterTests(unittest.TestCase):
                 ),
             )
 
+            progress = []
+            output = root / "calibration.json"
+            result = converter.execute_one_chip_operation(
+                converter.OneChipOperationRequest(
+                    mode="calibration",
+                    source=root,
+                    calibration=root,
+                    output=output,
+                ),
+                progress=progress.append,
+            )
+            self.assertEqual(result.output, output)
+            self.assertTrue(output.is_file())
+            self.assertEqual(progress[-1].stage, "complete")
+
+    def test_cancelled_operation_does_not_create_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "converted"
+            token = converter.CancellationToken()
+            token.cancel()
+
+            with self.assertRaises(converter.ConversionCancelled):
+                converter.execute_one_chip_operation(
+                    converter.OneChipOperationRequest(
+                        mode="convert",
+                        source=root,
+                        calibration=root,
+                        output=output,
+                    ),
+                    cancellation=token,
+                )
+
+            self.assertFalse(output.exists())
+
     def test_calibration_verifier_accepts_regenerated_yaml_conversion(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

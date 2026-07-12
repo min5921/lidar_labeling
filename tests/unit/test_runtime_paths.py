@@ -6,6 +6,7 @@ import unittest
 
 from lidar_label_tool.app.runtime_paths import (
     CRASH_LOG_NAME,
+    user_settings_path,
     user_log_directory,
     write_crash_log,
 )
@@ -18,6 +19,11 @@ class RuntimePathTests(unittest.TestCase):
         self.assertEqual(
             user_log_directory({"LOCALAPPDATA": str(root)}),
             root / "LiDARLabelTool" / "logs",
+        )
+
+        self.assertEqual(
+            user_settings_path({"LOCALAPPDATA": str(root)}),
+            root / "LiDARLabelTool" / "settings.ini",
         )
 
     def test_crash_log_falls_back_when_primary_location_is_not_writable(self) -> None:

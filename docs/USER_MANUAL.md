@@ -12,9 +12,9 @@
 - camera calibration을 이용한 현재 3D 박스 실시간 투영
 - `dataset.json` 기반 `MERGED/000000.bin`, `000001.bin` 입력
 
-실행 방식은 두 가지다. 개발 PC에서는 `.venv`로 실행하고, 다른 Windows PC에서는
-`LiDARLabelTool.exe`와 `_internal/`이 함께 있는 portable 폴더를 사용한다. portable 사용 PC에는
-Python, ROS2, MCAP 패키지를 설치하지 않는다.
+실행 방식은 세 가지다. v0.2.0 통합 배포본은 단일 `LiDARLabelTool.exe`만 실행한다. 기존 r6
+one-folder 배포본은 `LiDARLabelTool.exe`와 `_internal/`을 함께 사용하며, 개발 PC에서는 `.venv`로
+실행한다. 배포 사용 PC에는 Python, ROS2, MCAP 패키지를 설치하지 않는다.
 
 원본 라벨 파일은 선택 사항이다. 라벨이 없으면 객체 0개의 `unvisited` 프레임으로 열리고, 새 박스를 만든 뒤 작업 JSON으로 저장할 수 있다. Camera GT와 source projected 레이어만 비어 있으며 camera calibration이 있으면 live projection은 사용할 수 있다.
 
@@ -22,9 +22,12 @@ Python, ROS2, MCAP 패키지를 설치하지 않는다.
 
 ## 2. 가장 쉬운 실행 방법
 
-포터블 배포본에서는 `LiDARLabelTool.exe`를 더블클릭한다. 데이터셋 폴더를
-`Start_LiDAR_Label_Tool.bat` 위로 드래그하거나, 실행 후 폴더 선택 창에서 고를 수도 있다.
-EXE만 따로 복사하면 실행되지 않으므로 `_internal/` 폴더와 항상 함께 둔다.
+v0.2.0 통합 배포본에서는 `LiDARLabelTool.exe`를 더블클릭한다. 첫 화면에서 데이터셋 열기,
+원본 변환, 재동기화, Calibration 생성·검증, Preflight, 통계, export를 선택한다. PowerShell과 BAT는
+사용하지 않는다.
+
+기존 r6 one-folder 배포본은 EXE만 따로 복사하면 실행되지 않으므로 `_internal/` 폴더와 항상 함께
+둔다. r6의 `Start_LiDAR_Label_Tool.bat`는 기존 배포 호환용이다.
 
 개발 PC에서는 아래 방법을 사용한다.
 
@@ -47,7 +50,7 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
 
 작업 저장 폴더에 쓸 수 없으면 별도 작업 폴더 선택 창이 열린다. 이때 선택한 폴더 아래에 데이터셋 ID별 작업 라벨이 저장되며 원본 데이터셋은 변경하지 않는다.
 
-## 3. PowerShell로 실행하는 방법
+## 3. 개발 환경에서 PowerShell로 실행하는 방법
 
 프로젝트 폴더에서 다음 명령을 실행한다.
 
@@ -62,7 +65,7 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
   .\local_data\incoming\merged_device_full
 ```
 
-경로를 생략하면 dataset 폴더 선택 창이 열린다.
+경로를 생략하면 통합 작업 선택 화면이 열린다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool gui

@@ -96,6 +96,32 @@ class CliTests(unittest.TestCase):
             self.assertEqual(payload["object_count"], 1)
             self.assertEqual(payload["class_counts"], {"Car": 1})
 
+    def test_export_uses_shared_service(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "dataset"
+            output = Path(directory) / "exported"
+            root.mkdir()
+            create_device_dataset(root)
+            write_source_labels(root, "000000", [source_object("car-1")])
+            console = StringIO()
+
+            with redirect_stdout(console):
+                exit_code = main(
+                    [
+                        "export",
+                        str(root),
+                        "--format",
+                        "lidar_label_json",
+                        "--output",
+                        str(output),
+                    ]
+                )
+
+            payload = json.loads(console.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["frames"], 1)
+            self.assertTrue((output / "000000.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

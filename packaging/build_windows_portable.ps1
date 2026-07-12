@@ -3,7 +3,8 @@ param(
     [string]$PythonCommand = "py",
     [string]$VenvDirectory = ".build\windows-portable-venv",
     [switch]$SkipTests,
-    [switch]$SkipDependencyInstall
+    [switch]$SkipDependencyInstall,
+    [switch]$OneFile
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,6 +78,7 @@ try {
         "--clean",
         "--windowed",
         "--name", "LiDARLabelTool",
+        "--version-file", (Join-Path $ProjectRoot "packaging\windows_version_info.txt"),
         "--distpath", (Join-Path $ProjectRoot "dist"),
         "--workpath", (Join-Path $ProjectRoot "build\pyinstaller"),
         "--specpath", (Join-Path $ProjectRoot "build"),
@@ -85,11 +87,20 @@ try {
         "--add-data", "$((Join-Path $ProjectRoot "configs"));configs",
         "--add-data", "$((Join-Path $ProjectRoot "schemas"));schemas",
         "--add-data", "$((Join-Path $ProjectRoot "resources"));resources",
+        "--add-data", "$((Join-Path $ProjectRoot "THIRD_PARTY_NOTICES.md"));.",
         (Join-Path $ProjectRoot "packaging\windows_entry.py")
     )
+    if ($OneFile) {
+        $PyInstallerArguments = @("--onefile") + $PyInstallerArguments
+    }
     Invoke-Checked -Program $VenvPython -Arguments (@("-m", "PyInstaller") + $PyInstallerArguments)
 
-    $Executable = Join-Path $ProjectRoot "dist\LiDARLabelTool\LiDARLabelTool.exe"
+    $Executable = if ($OneFile) {
+        Join-Path $ProjectRoot "dist\LiDARLabelTool.exe"
+    }
+    else {
+        Join-Path $ProjectRoot "dist\LiDARLabelTool\LiDARLabelTool.exe"
+    }
     if (-not (Test-Path -LiteralPath $Executable)) {
         throw "Portable executable was not created: $Executable"
     }

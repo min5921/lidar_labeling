@@ -7,13 +7,11 @@ from pathlib import Path
 import sys
 
 from lidar_label_tool.app.config import default_config_path, load_config
-from lidar_label_tool.exporters import ExportBatchError, create_default_registry, export_frames
-from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
+from lidar_label_tool.exporters import ExportBatchError
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
-from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
-from lidar_label_tool.services.frame_session import FrameSessionService
+from lidar_label_tool.services.label_export import export_dataset_labels
 from lidar_label_tool.services.label_statistics import LabelStatistics, collect_label_statistics
 
 
@@ -112,47 +110,21 @@ def _inspect(args: argparse.Namespace) -> int:
 
 def _export(args: argparse.Namespace) -> int:
     config = load_config(args.config)
-    adapter = open_dataset_adapter(args.dataset)
-    index = adapter.scan()
-    repository = (
-        LabelRepository.for_workspace(args.workspace, index.dataset_id)
-        if args.workspace is not None
-        else LabelRepository.for_sidecar(args.dataset, index.dataset_id)
+    result = export_dataset_labels(
+        args.dataset,
+        config=config,
+        export_format=args.export_format,
+        output=args.output,
+        frame_ids=args.frames,
+        workspace_root=args.workspace,
     )
-    importer = WaymoLabelImporter(
-        config["source_class_mappings"],
-        source_format=(
-            "device_centric_json"
-            if isinstance(adapter, DeviceCentricAdapter)
-            else "waymo_frame_json"
-        ),
-    )
-    session = FrameSessionService(adapter, importer, repository)
-    frame_ids = tuple(args.frames) if args.frames else index.frame_ids
-    unknown = sorted(set(frame_ids) - set(index.frame_ids))
-    if unknown:
-        raise ValueError(f"unknown frame id(s): {', '.join(unknown)}")
-    labels = tuple(session.open_frame(frame_id).label for frame_id in frame_ids)
-    allowed_classes = tuple(str(item["name"]) for item in config["classes"])
-    exporter = create_default_registry(allowed_classes).get(args.export_format)
-    output = Path(args.output)
-    exported: tuple[Path, ...]
-    if len(labels) == 1 and output.suffix:
-        exporter.export_frame(labels[0], output)
-        exported = (output,)
-    else:
-        if len(labels) > 1 and output.suffix and not output.is_dir():
-            raise ValueError("multiple-frame output must be a directory, not a JSON path")
-        if output.exists() and not output.is_dir():
-            raise ValueError("multiple-frame output must be a directory")
-        exported = export_frames(labels, exporter, output)
     print(
         json.dumps(
             {
-                "format": exporter.name,
-                "dataset_id": index.dataset_id,
-                "frames": len(exported),
-                "output": str(output),
+                "format": result.export_format,
+                "dataset_id": result.dataset_id,
+                "frames": result.frame_count,
+                "output": str(result.output),
             },
             ensure_ascii=False,
             indent=2,

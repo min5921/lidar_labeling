@@ -8,6 +8,7 @@ import tempfile
 
 APP_DIRECTORY_NAME = "LiDARLabelTool"
 CRASH_LOG_NAME = "LiDARLabelTool_crash.log"
+SETTINGS_NAME = "settings.ini"
 
 
 def user_log_directory(
@@ -20,6 +21,24 @@ def user_log_directory(
         return Path(local_app_data) / APP_DIRECTORY_NAME / "logs"
     home_path = Path.home() if home is None else Path(home)
     return home_path / "AppData" / "Local" / APP_DIRECTORY_NAME / "logs"
+
+
+def user_data_directory(
+    env: Mapping[str, str] | None = None, *, home: Path | None = None
+) -> Path:
+    """Return the per-user application data directory without creating it."""
+    values = os.environ if env is None else env
+    local_app_data = values.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        return Path(local_app_data) / APP_DIRECTORY_NAME
+    home_path = Path.home() if home is None else Path(home)
+    return home_path / "AppData" / "Local" / APP_DIRECTORY_NAME
+
+
+def user_settings_path(
+    env: Mapping[str, str] | None = None, *, home: Path | None = None
+) -> Path:
+    return user_data_directory(env, home=home) / SETTINGS_NAME
 
 
 def crash_log_candidates(

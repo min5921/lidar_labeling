@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
@@ -20,6 +20,7 @@ from lidar_label_tool.services.session_lock import (
     SessionLockInfo,
 )
 from lidar_label_tool.ui.main_window import MainWindow
+from lidar_label_tool.ui.workflow_dialog import WorkflowDialog
 
 
 def _show_open_error(candidate: Path, exc: Exception) -> None:
@@ -164,14 +165,12 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
 
     while True:
         if selected_root is None:
-            selected = QFileDialog.getExistingDirectory(
-                None,
-                "LiDAR 데이터셋 폴더 선택",
-                str(Path.cwd()),
-            )
-            if not selected:
+            workflow = WorkflowDialog(config_path)
+            if workflow.exec() != QDialog.DialogCode.Accepted:
                 return 0
-            selected_root = Path(selected)
+            selected_root = workflow.selected_dataset
+            if selected_root is None:
+                return 0
 
         workspace_root: Path | None = None
         try:
