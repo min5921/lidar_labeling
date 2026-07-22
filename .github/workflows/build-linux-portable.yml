@@ -91,8 +91,11 @@ jobs:
 
       - name: Verify release archive
         run: |
-          sha256sum --check \
-            release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz.sha256.txt
+          (
+            cd release_packages
+            sha256sum --check \
+              LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz.sha256.txt
+          )
           tar -tzf \
             release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
 
