@@ -5,6 +5,46 @@
 `codex/integrated-desktop-workflows`, Linux portable v0.2.1은 `codex/linux-portable` 브랜치에서
 관리한다.
 
+## dc15cc4 — chore: use Node 24 artifact upload action
+
+GitHub Actions의 upload-artifact를 Node 24 기반 v7로 올렸다. 최종 run `29985332303`에서 artifact
+ID `8554809220` 업로드까지 통과했다.
+
+## a6f9593 — fix: verify Linux release hash from package directory
+
+사용자용 SHA-256 파일은 tar.gz basename을 기록하므로 CI도 `release_packages` 안에서 검증하도록
+작업 디렉터리를 맞췄다.
+
+## 699352d — fix: make Linux PyInstaller analysis headless
+
+사용하지 않는 `pyqtgraph.examples`를 전부 import하지 않고 필요한 data와 `pyqtgraph.opengl`만
+수집하도록 좁혔다. PyInstaller 분석도 offscreen으로 고정하고 `libOpenGL.so.0` 런타임을 추가했다.
+
+## 2d021c0 — fix: install default config for portable builds
+
+일반 wheel 설치에서도 `configs/default.json`을 찾도록 setuptools data-file과 설치 prefix resolver를
+추가했다. GitHub Actions checkout/setup-python도 Node 24 기반 v6로 갱신했다.
+
+## 22584a6 — feat: add Linux portable distribution
+
+Ubuntu 22.04 x86_64용 통합 one-file 배포 경로를 추가한 커밋이다.
+
+- Windows/Linux 공용 packaged GUI 진입점과 `--smoke-test`
+- Linux XDG config/data/state 경로
+- PyInstaller Linux build/package script와 고정 핵심 dependency
+- tar.gz 실행 권한 보존, 정확한 dependency 기록, SHA-256
+- Ubuntu GitHub Actions offscreen/xcb smoke와 artifact 업로드
+- Linux 사용자·빌드·clean-PC 검수 매뉴얼
+
+최종 검증:
+
+- Windows pytest: `121 passed`
+- Ubuntu pytest: `114 passed, 7 skipped`
+- Windows/Ubuntu ruff: 통과
+- Linux one-file offscreen와 Xvfb/xcb smoke: 통과
+- tar.gz SHA-256:
+  `56f2a6d2a9b49b73ea7f4ff8b58b528d0ec7f80585cc1f3a9d53aab8ae6fe45d`
+
 ## c38c48d — feat: integrate conversion workflows into desktop app
 
 PowerShell/BAT 기반 사용자 작업을 공용 service와 통합 GUI로 옮기고 단일 EXE 배포 경로를 추가한
