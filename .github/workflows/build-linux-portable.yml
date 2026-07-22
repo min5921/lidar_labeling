@@ -100,7 +100,7 @@ jobs:
             release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
 
       - name: Upload Linux portable release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1
           path: |
