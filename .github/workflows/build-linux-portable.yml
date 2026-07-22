@@ -43,6 +43,7 @@ jobs:
             libgl1 \
             libglib2.0-0 \
             libice6 \
+            libopengl0 \
             libsm6 \
             libx11-6 \
             libx11-xcb1 \

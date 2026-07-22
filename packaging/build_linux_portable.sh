@@ -114,7 +114,8 @@ pyinstaller_arguments=(
     --distpath "$project_root/dist"
     --workpath "$project_root/build/pyinstaller-linux"
     --specpath "$project_root/build"
-    --collect-all pyqtgraph
+    --collect-data pyqtgraph
+    --hidden-import pyqtgraph.opengl
     --collect-all OpenGL
     --add-data "$project_root/configs:configs"
     --add-data "$project_root/schemas:schemas"
@@ -125,7 +126,7 @@ if ((one_file)); then
     pyinstaller_arguments=(--onefile "${pyinstaller_arguments[@]}")
 fi
 
-"$venv_python" -m PyInstaller \
+QT_QPA_PLATFORM=offscreen QT_OPENGL=software "$venv_python" -m PyInstaller \
     "${pyinstaller_arguments[@]}" \
     "$project_root/packaging/linux_entry.py"
 
