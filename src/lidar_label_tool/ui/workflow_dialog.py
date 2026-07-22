@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from lidar_label_tool import __version__
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.app.runtime_paths import user_settings_path
 from lidar_label_tool.services.dataset_preflight import validate_dataset
@@ -788,7 +789,7 @@ class WorkflowDialog(QDialog):
         message = QMessageBox(
             QMessageBox.Icon.Information,
             "LiDAR Label Tool",
-            "Version 0.2.0",
+            f"Version {__version__}",
             parent=self,
         )
         message.setDetailedText(notices)

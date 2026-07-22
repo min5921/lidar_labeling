@@ -1,0 +1,106 @@
+name: Build Linux portable
+
+on:
+  push:
+    branches:
+      - codex/linux-portable
+    paths:
+      - ".github/workflows/build-linux-portable.yml"
+      - "configs/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "schemas/**"
+      - "src/**"
+      - "tests/**"
+      - "THIRD_PARTY_NOTICES.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-x86_64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Linux GUI runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libdbus-1-3 \
+            libegl1 \
+            libfontconfig1 \
+            libgl1 \
+            libglib2.0-0 \
+            libice6 \
+            libsm6 \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcb1 \
+            libxcb-cursor0 \
+            libxcb-glx0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-util1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxext6 \
+            libxi6 \
+            libxkbcommon-x11-0 \
+            libxrender1 \
+            xauth \
+            xvfb
+
+      - name: Build and smoke-test one-file executable
+        run: |
+          bash packaging/build_linux_portable.sh \
+            --python python3 \
+            --onefile
+
+      - name: Smoke-test Qt xcb launcher
+        run: |
+          xvfb-run -a env \
+            QT_QPA_PLATFORM=xcb \
+            QT_OPENGL=software \
+            ./dist/LiDARLabelTool --smoke-test
+
+      - name: Package release
+        env:
+          SOURCE_DATE_EPOCH: "0"
+        run: |
+          bash packaging/package_linux_release.sh \
+            LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1
+
+      - name: Verify release archive
+        run: |
+          sha256sum --check \
+            release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz.sha256.txt
+          tar -tzf \
+            release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
+
+      - name: Upload Linux portable release
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1
+          path: |
+            release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
+            release_packages/LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz.sha256.txt
+          if-no-files-found: error
+          retention-days: 30

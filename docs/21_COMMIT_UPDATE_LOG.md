@@ -2,7 +2,8 @@
 
 이 문서는 프로젝트 진행 중 어떤 커밋에서 무엇이 추가·수정되었는지 추적하기 위한 기록이다.
 기존 one-folder 배포는 `codex/portable-distribution`, 통합 one-file v0.2.0은
-`codex/integrated-desktop-workflows` 브랜치에서 관리한다.
+`codex/integrated-desktop-workflows`, Linux portable v0.2.1은 `codex/linux-portable` 브랜치에서
+관리한다.
 
 ## c38c48d — feat: integrate conversion workflows into desktop app
 

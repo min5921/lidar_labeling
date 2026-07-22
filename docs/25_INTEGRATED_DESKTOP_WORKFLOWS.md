@@ -21,7 +21,8 @@ ROS2를 직접 실행하거나 설치하지 않는다.
 - 장애 분석용 one-folder 빌드도 같은 소스와 버전으로 생성한다.
 - 원본 MCAP, calibration YAML, 변환 dataset, 작업 라벨, export 결과는 EXE 밖에 둔다.
 - 사용자가 source, calibration, output, workspace, export 경로를 직접 선택한다.
-- 최근 경로와 사용자 설정은 `%LOCALAPPDATA%\LiDARLabelTool\` 아래에 저장한다.
+- Windows 최근 경로와 사용자 설정은 `%LOCALAPPDATA%\LiDARLabelTool\` 아래에 저장한다.
+- Linux 설정은 XDG config, log는 XDG state, 사용자 데이터는 XDG data 경로에 저장한다.
 - crash log와 작업 log는 번들 또는 EXE 옆에 쓰지 않는다.
 
 ## 3. 서비스 경계

@@ -28,6 +28,8 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 - source/calibration fingerprint 변경 감지와 unknown label field 보존
 - 전체 프레임 dataset preflight, GUI QA 요약, source/working label 통계 CLI 추가
 - export class/finite/box 크기 선검증과 다중 frame 사전 검증 추가
+- Windows/Linux 공용 통합 GUI 진입점과 Linux XDG 설정·로그 경로 추가
+- Ubuntu 22.04 x86_64용 PyInstaller one-file CI 빌드·스모크·배포 패키징 추가
 
 확정된 구현 기본값은 `docs/04_OPEN_DECISIONS.md`에 있다.
 
@@ -60,6 +62,8 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 25. `docs/25_INTEGRATED_DESKTOP_WORKFLOWS.md`
 26. `docs/26_ONEFILE_RELEASE_MANUAL.md`
 27. `docs/27_INTEGRATED_RELEASE_VERIFICATION.md`
+28. `docs/28_LINUX_PORTABLE_BUILD.md`
+29. `docs/29_LINUX_RELEASE_VERIFICATION.md`
 
 실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다. 실제 데이터로 써보고
 피드백을 남길 때는 [`docs/19_TRIAL_RUN_MANUAL.md`](docs/19_TRIAL_RUN_MANUAL.md)를 순서대로
@@ -104,9 +108,11 @@ Labelling_tool/
 
 `dataset/`은 저장소 안에 넣는 고정 폴더가 아니라 실행 시 사용자가 선택하는 외부 데이터 루트이다.
 
-현재 Windows 10/11 x64용 Python 무설치 portable 폴더/ZIP을 만들 수 있다. 배포 단위는
-`LiDARLabelTool.exe`와 `_internal/`을 함께 둔 one-folder 구조이며, 최종 clean-PC 인증과 코드 서명은
-아직 별도 검수가 필요하다. 자세한 내용은 `docs/17_WINDOWS_PORTABLE_BUILD.md`를 따른다.
+Windows 10/11 x64에서는 Python 무설치 one-folder와 one-file EXE를 만들 수 있다. Linux는
+Ubuntu 22.04 x86_64를 기준으로 Python 무설치 one-file ELF 실행 파일과 tar.gz를 GitHub Actions에서
+네이티브 빌드한다. PyInstaller는 교차 컴파일러가 아니므로 각 운영체제 산출물은 해당 운영체제에서
+만든다. Windows 절차는 `docs/17_WINDOWS_PORTABLE_BUILD.md`, Linux 절차는
+`docs/28_LINUX_PORTABLE_BUILD.md`를 따른다.
 
 ## 샘플 데이터 전달 위치
 

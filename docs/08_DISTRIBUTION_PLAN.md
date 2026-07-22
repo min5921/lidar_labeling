@@ -77,9 +77,13 @@ release/
 ## 지원 범위
 
 - 1차 지원: Windows 10/11 x64
-- 지원하지 않음: 32-bit Windows, ARM Windows, macOS, Linux
+- 2차 지원: Ubuntu 22.04 이상 x86_64 Linux
+- 지원하지 않음: 32-bit Windows, ARM Windows, Linux ARM64, macOS
 - GPU: 전용 GPU를 필수로 가정하지 않되 지원 OpenGL 버전은 renderer spike 후 확정
 - 데이터: 외부 dataset 폴더, 네트워크 드라이브 지원은 실제 테스트 후 명시
+
+Linux 배포는 Windows 산출물을 재사용하지 않는다. Ubuntu 22.04 GitHub Actions runner에서
+PyInstaller one-file ELF를 직접 만들며 상세 계약은 `docs/28_LINUX_PORTABLE_BUILD.md`에 둔다.
 
 ## 릴리스 전에 결정할 것
 
