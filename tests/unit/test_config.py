@@ -45,6 +45,22 @@ class ConfigPathTests(unittest.TestCase):
                     bundle_root / "configs" / "default.json",
                 )
 
+    def test_default_config_path_supports_regular_wheel_install(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory)
+            installed = (
+                prefix
+                / "share"
+                / "lidar-label-tool"
+                / "configs"
+                / "default.json"
+            )
+            installed.parent.mkdir(parents=True)
+            installed.write_text("{}", encoding="utf-8")
+
+            with patch.object(sys, "prefix", str(prefix)):
+                self.assertEqual(default_config_path(), installed)
+
 
 if __name__ == "__main__":
     unittest.main()

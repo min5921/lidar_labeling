@@ -26,4 +26,13 @@ def default_config_path(project_root: Path | None = None) -> Path:
     frozen_root = getattr(sys, "_MEIPASS", None)
     if frozen_root:
         return Path(frozen_root) / "configs" / "default.json"
+    installed = (
+        Path(sys.prefix)
+        / "share"
+        / "lidar-label-tool"
+        / "configs"
+        / "default.json"
+    )
+    if installed.is_file():
+        return installed
     return Path(__file__).resolve().parents[3] / "configs" / "default.json"

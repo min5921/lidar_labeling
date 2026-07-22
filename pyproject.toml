@@ -29,6 +29,9 @@ lidar-label-tool = "lidar_label_tool.app.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.data-files]
+"share/lidar-label-tool/configs" = ["configs/default.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
