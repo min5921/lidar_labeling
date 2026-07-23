@@ -13,7 +13,8 @@
 
 첫 `v0.2.1` 태그 실행은 Windows SHA 파일의 CRLF를 Linux `sha256sum`이 파일명 일부로 해석해
 게시 전 중단됐다. 태그를 이동하지 않고 SHA 파일을 LF로 기록·정규화한 `v0.2.2`에서 다시
-배포한다.
+배포했다. 최종 run `30011785982`에서 Windows/Linux build, smoke, hash 검증과 GitHub Release
+게시까지 통과했다.
 
 ## dc15cc4 — chore: use Node 24 artifact upload action
 

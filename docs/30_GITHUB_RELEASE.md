@@ -84,3 +84,38 @@ cd LiDARLabelTool_Integrated_0.2.2_linux_x86_64
 - 프로젝트 자체 오픈소스 라이선스는 아직 선언되지 않았다. 공개 사용·재배포 정책은 저장소
   소유자가 별도로 확정한다.
 - `THIRD_PARTY_NOTICES.md`와 번들에 포함된 제3자 라이선스 파일을 제거하지 않는다.
+
+## 6. v0.2.2 게시 검증
+
+게시일: 2026-07-23
+
+```text
+tag: v0.2.2
+commit: 760321c64cea606c7d12864699f559e56bb667fb
+workflow run: 30011785982
+release id: 358709934
+```
+
+검증 결과:
+
+- Windows Server 2022 테스트, Ruff, one-file build, packaged smoke: 통과
+- Ubuntu 22.04 테스트, Ruff, one-file build, offscreen/xcb smoke: 통과
+- 통합 게시 job의 Windows/Linux SHA-256 재검증: 통과
+- GitHub Release: draft 아님, prerelease 아님, latest
+- Release 자산 네 개의 공개 다운로드 가능 여부: 통과
+- 공식 자산을 로컬 `release_packages/`에 다시 내려받아 SHA-256 재검증: 통과
+- Windows FileVersion/ProductVersion `0.2.2`: 확인
+- Linux tar.gz의 실행 권한 보존용 archive와 문서 네 종류: 확인
+
+SHA-256:
+
+```text
+3A1FC9258D72B59366AB3DAB655C4CD734B5AA49FF4FF549AFD23AE24C86ECAC
+  LiDARLabelTool_Integrated_0.2.2_windows_x86_64.exe
+
+d4a8f3af5683bcacf9b2f50562d0abe9d50b4eac50ba53b15d9115ca7e83095f
+  LiDARLabelTool_Integrated_0.2.2_linux_x86_64.tar.gz
+```
+
+`v0.2.1` 태그 실행은 자산 게시 전 CRLF hash 검사에서 중단되어 GitHub Release가 아니다.
+사용자 배포와 운영 검수는 `v0.2.2`만 사용한다.

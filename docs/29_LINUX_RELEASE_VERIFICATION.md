@@ -101,3 +101,6 @@ Linux 소스 호환성과 네이티브 CI 배포 경로를 구현했고 v0.2.1 r
 최종 운영 승인은 별도 clean Linux PC에서 one_chip 실제 변환, frame 진행, calibration projection,
 저장·재로드를 확인한 뒤 내린다. 프로젝트 라이선스가 미정이므로 현재 후보는 30일 artifact로
 보관하고 영구 공개 GitHub Release는 만들지 않았다.
+
+> 후속 상태: 이 임시 후보는 Windows/Linux 통합 `v0.2.2` GitHub Release로 영구 배포되었다.
+> 최종 링크와 SHA-256은 `docs/30_GITHUB_RELEASE.md`를 따른다.
