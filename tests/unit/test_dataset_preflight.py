@@ -124,7 +124,7 @@ class DatasetPreflightTests(unittest.TestCase):
             self.assertEqual(report.exit_code, 1)
             issue = next(issue for issue in report.issues if issue.code == "source_changed")
             self.assertEqual(issue.frame_id, "000000")
-            self.assertEqual(issue.path, repository.path_for("000000"))
+            self.assertEqual(issue.path, repository.path_for("000000").resolve())
             self.assertTrue(source_path.is_file())
 
 

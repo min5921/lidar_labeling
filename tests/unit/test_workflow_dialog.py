@@ -35,7 +35,7 @@ class WorkflowDialogTests(unittest.TestCase):
             request = dialog._request()
 
             self.assertEqual(request.mode, "resync")
-            self.assertEqual(request.output, dataset)
+            self.assertEqual(request.output, dataset.resolve())
             dialog.close()
 
     def test_convert_rejects_empty_source_path(self) -> None:

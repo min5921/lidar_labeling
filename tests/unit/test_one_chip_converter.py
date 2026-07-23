@@ -119,7 +119,7 @@ class OneChipConverterTests(unittest.TestCase):
                 ),
                 progress=progress.append,
             )
-            self.assertEqual(result.output, output)
+            self.assertEqual(result.output, output.resolve())
             self.assertTrue(output.is_file())
             self.assertEqual(progress[-1].stage, "complete")
 

@@ -83,12 +83,15 @@ class DeviceCentricAdapterTests(unittest.TestCase):
             self.assertEqual(index.frame_ids, ("000000",))
             self.assertEqual(
                 source.point_cloud_paths["MERGED"][0],
-                root / "lidar" / "000000.bin",
+                (root / "lidar" / "000000.bin").resolve(),
             )
-            self.assertEqual(source.image_paths["CAM_LEFT"], root / "cam_left" / "000010.jpg")
+            self.assertEqual(
+                source.image_paths["CAM_LEFT"],
+                (root / "cam_left" / "000010.jpg").resolve(),
+            )
             self.assertEqual(
                 source.image_paths["CAM_RIGHT"],
-                root / "cam_right" / "000009.jpg",
+                (root / "cam_right" / "000009.jpg").resolve(),
             )
             cloud = adapter.load_cloud_from_source(source, "MERGED")
             np.testing.assert_allclose(cloud.xyz, [[1, 2, 3]])
