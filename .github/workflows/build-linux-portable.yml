@@ -1,18 +1,6 @@
 name: Build Linux portable
 
 on:
-  push:
-    branches:
-      - codex/linux-portable
-    paths:
-      - ".github/workflows/build-linux-portable.yml"
-      - "configs/**"
-      - "packaging/**"
-      - "pyproject.toml"
-      - "schemas/**"
-      - "src/**"
-      - "tests/**"
-      - "THIRD_PARTY_NOTICES.md"
   workflow_dispatch:
 
 permissions:

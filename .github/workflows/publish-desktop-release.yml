@@ -1,0 +1,255 @@
+name: Publish desktop release
+
+on:
+  push:
+    branches:
+      - codex/linux-portable
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    paths:
+      - ".github/workflows/publish-desktop-release.yml"
+      - "configs/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - "schemas/**"
+      - "src/**"
+      - "tests/**"
+      - "THIRD_PARTY_NOTICES.md"
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows-x86_64:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify release version
+        shell: pwsh
+        run: |
+          $ProjectVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          $Version = $ProjectVersion
+          if ("${{ github.ref_type }}" -eq "tag") {
+              $Tag = "${{ github.ref_name }}"
+              if ($Tag -notmatch '^v(?<Version>\d+\.\d+\.\d+)$') {
+                  throw "Unsupported release tag: $Tag"
+              }
+              $Version = $Matches.Version
+              if ($ProjectVersion -ne $Version) {
+                  throw "Tag version $Version does not match pyproject.toml $ProjectVersion"
+              }
+          }
+          "RELEASE_VERSION=$Version" | Add-Content -LiteralPath $env:GITHUB_ENV
+          "WINDOWS_RELEASE_NAME=LiDARLabelTool_Integrated_${Version}_windows_x86_64" |
+              Add-Content -LiteralPath $env:GITHUB_ENV
+
+      - name: Build and test Windows one-file executable
+        shell: pwsh
+        run: |
+          .\packaging\build_windows_portable.ps1 `
+            -PythonCommand python `
+            -OneFile
+
+      - name: Smoke-test packaged Windows launcher
+        shell: pwsh
+        run: |
+          $Process = Start-Process `
+            -FilePath .\dist\LiDARLabelTool.exe `
+            -ArgumentList "--smoke-test" `
+            -Wait `
+            -PassThru
+          if ($Process.ExitCode -ne 0) {
+              throw "Windows packaged smoke test failed: $($Process.ExitCode)"
+          }
+
+      - name: Package Windows release
+        shell: pwsh
+        run: |
+          .\packaging\package_windows_onefile_release.ps1 `
+            -ReleaseName $env:WINDOWS_RELEASE_NAME
+          Get-Content `
+            -LiteralPath ".\release_packages\$env:WINDOWS_RELEASE_NAME.sha256.txt"
+
+      - name: Upload Windows release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets-windows-x86_64
+          path: |
+            release_packages/${{ env.WINDOWS_RELEASE_NAME }}.exe
+            release_packages/${{ env.WINDOWS_RELEASE_NAME }}.sha256.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  build-linux-x86_64:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Verify release version
+        run: |
+          project_version="$(
+            python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          )"
+          version="$project_version"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "Unsupported release tag: $tag" >&2
+              exit 1
+            fi
+            version="${BASH_REMATCH[1]}"
+            if [[ "$project_version" != "$version" ]]; then
+              echo "Tag version $version does not match pyproject.toml $project_version" >&2
+              exit 1
+            fi
+          fi
+          echo "RELEASE_VERSION=$version" >>"$GITHUB_ENV"
+          echo \
+            "LINUX_RELEASE_NAME=LiDARLabelTool_Integrated_${version}_linux_x86_64" \
+            >>"$GITHUB_ENV"
+
+      - name: Install Linux GUI runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libdbus-1-3 \
+            libegl1 \
+            libfontconfig1 \
+            libgl1 \
+            libglib2.0-0 \
+            libice6 \
+            libopengl0 \
+            libsm6 \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcb1 \
+            libxcb-cursor0 \
+            libxcb-glx0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-shm0 \
+            libxcb-sync1 \
+            libxcb-util1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxext6 \
+            libxi6 \
+            libxkbcommon-x11-0 \
+            libxrender1 \
+            xauth \
+            xvfb
+
+      - name: Build and smoke-test Linux one-file executable
+        run: |
+          bash packaging/build_linux_portable.sh \
+            --python python3 \
+            --onefile
+
+      - name: Smoke-test Qt xcb launcher
+        run: |
+          xvfb-run -a env \
+            QT_QPA_PLATFORM=xcb \
+            QT_OPENGL=software \
+            ./dist/LiDARLabelTool --smoke-test
+
+      - name: Package Linux release
+        env:
+          SOURCE_DATE_EPOCH: "0"
+        run: |
+          bash packaging/package_linux_release.sh \
+            "$LINUX_RELEASE_NAME"
+          (
+            cd release_packages
+            sha256sum --check "$LINUX_RELEASE_NAME.tar.gz.sha256.txt"
+          )
+          tar -tzf "release_packages/$LINUX_RELEASE_NAME.tar.gz"
+
+      - name: Upload Linux release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-assets-linux-x86_64
+          path: |
+            release_packages/${{ env.LINUX_RELEASE_NAME }}.tar.gz
+            release_packages/${{ env.LINUX_RELEASE_NAME }}.tar.gz.sha256.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    needs:
+      - build-windows-x86_64
+      - build-linux-x86_64
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@v6
+
+      - name: Download verified release assets
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-assets-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Verify release checksums
+        run: |
+          (
+            cd release-assets
+            sha256sum --check \
+              LiDARLabelTool_Integrated_*_windows_x86_64.sha256.txt
+            sha256sum --check \
+              LiDARLabelTool_Integrated_*_linux_x86_64.tar.gz.sha256.txt
+          )
+
+      - name: Publish permanent GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes_file="packaging/release_notes_v${version}.md"
+          if [[ ! -f "$notes_file" ]]; then
+            echo "Release notes do not exist: $notes_file" >&2
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/LiDARLabelTool_Integrated_*_windows_x86_64.exe \
+            release-assets/LiDARLabelTool_Integrated_*_windows_x86_64.sha256.txt \
+            release-assets/LiDARLabelTool_Integrated_*_linux_x86_64.tar.gz \
+            release-assets/LiDARLabelTool_Integrated_*_linux_x86_64.tar.gz.sha256.txt \
+            --verify-tag \
+            --title "LiDAR Label Tool $GITHUB_REF_NAME" \
+            --notes-file "$notes_file" \
+            --latest

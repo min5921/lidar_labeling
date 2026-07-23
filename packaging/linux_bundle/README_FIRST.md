@@ -13,8 +13,8 @@ Python, pip, ROS2, PowerShell은 설치하지 않는다.
 터미널에서 압축을 풀고 실행한다.
 
 ```bash
-tar -xzf LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
-cd LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1
+tar -xzf LiDARLabelTool_Integrated_0.2.1_linux_x86_64.tar.gz
+cd LiDARLabelTool_Integrated_0.2.1_linux_x86_64
 ./LiDARLabelTool
 ```
 

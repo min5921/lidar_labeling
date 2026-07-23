@@ -5,6 +5,12 @@
 `codex/integrated-desktop-workflows`, Linux portable v0.2.1은 `codex/linux-portable` 브랜치에서
 관리한다.
 
+## v0.2.1 영구 Windows/Linux Release
+
+`vX.Y.Z` 태그에서 Windows Server 2022와 Ubuntu 22.04를 각각 사용해 네이티브 one-file 산출물을
+빌드하고, 테스트·smoke·SHA-256 검증이 모두 통과한 경우에만 GitHub Release를 만드는 workflow를
+추가했다. Windows 빌드도 핵심 배포 의존성을 constraint 파일로 고정했다.
+
 ## dc15cc4 — chore: use Node 24 artifact upload action
 
 GitHub Actions의 upload-artifact를 Node 24 기반 v7로 올렸다. 최종 run `29985332303`에서 artifact

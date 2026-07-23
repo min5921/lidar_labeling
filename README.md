@@ -64,6 +64,7 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 27. `docs/27_INTEGRATED_RELEASE_VERIFICATION.md`
 28. `docs/28_LINUX_PORTABLE_BUILD.md`
 29. `docs/29_LINUX_RELEASE_VERIFICATION.md`
+30. `docs/30_GITHUB_RELEASE.md`
 
 실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다. 실제 데이터로 써보고
 피드백을 남길 때는 [`docs/19_TRIAL_RUN_MANUAL.md`](docs/19_TRIAL_RUN_MANUAL.md)를 순서대로
@@ -112,7 +113,9 @@ Windows 10/11 x64에서는 Python 무설치 one-folder와 one-file EXE를 만들
 Ubuntu 22.04 x86_64를 기준으로 Python 무설치 one-file ELF 실행 파일과 tar.gz를 GitHub Actions에서
 네이티브 빌드한다. PyInstaller는 교차 컴파일러가 아니므로 각 운영체제 산출물은 해당 운영체제에서
 만든다. Windows 절차는 `docs/17_WINDOWS_PORTABLE_BUILD.md`, Linux 절차는
-`docs/28_LINUX_PORTABLE_BUILD.md`를 따른다.
+`docs/28_LINUX_PORTABLE_BUILD.md`를 따른다. 사용자용 Windows/Linux 영구 배포본은
+[`GitHub Releases`](https://github.com/min5921/lidar_labeling/releases/latest)에서 받으며 태그 기반
+배포 절차는 `docs/30_GITHUB_RELEASE.md`에 있다.
 
 ## 샘플 데이터 전달 위치
 

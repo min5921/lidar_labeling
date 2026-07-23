@@ -12,7 +12,7 @@
 - camera calibration을 이용한 현재 3D 박스 실시간 투영
 - `dataset.json` 기반 `MERGED/000000.bin`, `000001.bin` 입력
 
-Windows v0.2.0 검수본은 단일 `LiDARLabelTool.exe`를 실행한다. Linux v0.2.1 배포본은 tar.gz를
+Windows v0.2.1 배포본은 단일 `LiDARLabelTool.exe`를 실행한다. Linux v0.2.1 배포본은 tar.gz를
 푼 뒤 확장자 없는 `LiDARLabelTool` 실행 파일을 사용한다. 기존 Windows r6 one-folder 배포본은
 `LiDARLabelTool.exe`와 `_internal/`을 함께 사용하며, 개발 PC에서는 `.venv`로 실행한다. 배포 사용
 PC에는 Python, ROS2, MCAP 패키지를 설치하지 않는다.
@@ -23,16 +23,22 @@ PC에는 Python, ROS2, MCAP 패키지를 설치하지 않는다.
 
 ## 2. 가장 쉬운 실행 방법
 
-v0.2.0 통합 배포본에서는 `LiDARLabelTool.exe`를 더블클릭한다. 첫 화면에서 데이터셋 열기,
+v0.2.1 통합 배포본에서는 `LiDARLabelTool.exe`를 더블클릭한다. 첫 화면에서 데이터셋 열기,
 원본 변환, 재동기화, Calibration 생성·검증, Preflight, 통계, export를 선택한다. PowerShell과 BAT는
 사용하지 않는다.
 
 Linux v0.2.1 배포본은 다음처럼 실행한다. 제품 기능은 Windows 통합 EXE와 같다.
 
 ```bash
-tar -xzf LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1.tar.gz
-cd LiDARLabelTool_Integrated_0.2.1_linux_x86_64_r1
+tar -xzf LiDARLabelTool_Integrated_0.2.1_linux_x86_64.tar.gz
+cd LiDARLabelTool_Integrated_0.2.1_linux_x86_64
 ./LiDARLabelTool
+```
+
+Windows와 Linux의 만료 없는 공식 배포 파일은 다음 GitHub Release에서 받는다.
+
+```text
+https://github.com/min5921/lidar_labeling/releases/latest
 ```
 
 Linux 최근 경로는 `${XDG_CONFIG_HOME:-$HOME/.config}/LiDARLabelTool/settings.ini`, crash log는

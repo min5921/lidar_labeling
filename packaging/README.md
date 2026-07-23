@@ -4,6 +4,7 @@
 
 - `build_windows_portable.ps1`: 테스트 후 PyInstaller one-folder 빌드
 - `build_windows_portable.ps1 -OneFile`: 통합 사용자 기능을 포함한 단일 EXE 빌드
+- `windows_build_constraints.txt`: Windows 릴리스의 핵심 GUI/패키저 버전 고정
 - `package_windows_onefile_release.ps1`: 단일 EXE 이름 고정, 복사, SHA-256 생성
 - `package_windows_release.ps1`: 배포 폴더, 실행 배치, 매뉴얼, ZIP, SHA-256 생성
 - `portable_bundle/`: 최종 배포 폴더에 복사되는 launcher/readme 원본
@@ -14,6 +15,7 @@
 - `linux_bundle/`: Linux 최종 배포본에 포함되는 사용자 매뉴얼
 - `linux_entry.py`: Linux GUI 진입점
 - `.github/workflows/build-linux-portable.yml`: Ubuntu 22.04 네이티브 빌드와 artifact 업로드
+- `.github/workflows/publish-desktop-release.yml`: 태그 기반 Windows/Linux 영구 GitHub Release
 - installer 설정(채택 시)
 - version metadata
 - third-party license 목록 생성 설정

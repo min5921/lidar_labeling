@@ -2,6 +2,7 @@
 param(
     [string]$PythonCommand = "py",
     [string]$VenvDirectory = ".build\windows-portable-venv",
+    [string]$ConstraintFile = "packaging\windows_build_constraints.txt",
     [switch]$SkipTests,
     [switch]$SkipDependencyInstall,
     [switch]$OneFile
@@ -11,6 +12,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $VenvPath = Join-Path $ProjectRoot $VenvDirectory
 $VenvPython = Join-Path $VenvPath "Scripts\python.exe"
+$ConstraintPath = Join-Path $ProjectRoot $ConstraintFile
 
 function Invoke-Checked {
     param(
@@ -62,9 +64,14 @@ try {
         )
     }
     else {
+        if (-not (Test-Path -LiteralPath $ConstraintPath -PathType Leaf)) {
+            throw "Windows build constraint file does not exist: $ConstraintPath"
+        }
         Invoke-Checked -Program $VenvPython -Arguments @("-m", "pip", "install", "--upgrade", "pip")
         Invoke-Checked -Program $VenvPython -Arguments @(
-            "-m", "pip", "install", "-e", ".[gui,validation,dev,portable]"
+            "-m", "pip", "install",
+            "-c", $ConstraintPath,
+            "-e", ".[gui,validation,dev,portable]"
         )
     }
 
@@ -82,7 +89,8 @@ try {
         "--distpath", (Join-Path $ProjectRoot "dist"),
         "--workpath", (Join-Path $ProjectRoot "build\pyinstaller"),
         "--specpath", (Join-Path $ProjectRoot "build"),
-        "--collect-all", "pyqtgraph",
+        "--collect-data", "pyqtgraph",
+        "--hidden-import", "pyqtgraph.opengl",
         "--collect-all", "OpenGL",
         "--add-data", "$((Join-Path $ProjectRoot "configs"));configs",
         "--add-data", "$((Join-Path $ProjectRoot "schemas"));schemas",
