@@ -27,7 +27,8 @@ if ((Test-Path -LiteralPath $Target) -or (Test-Path -LiteralPath $HashPath)) {
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 Copy-Item -LiteralPath $Source -Destination $Target
 $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash
-"$Hash  $ReleaseName.exe" | Set-Content -LiteralPath $HashPath -Encoding ascii
+$HashContent = "$Hash  $ReleaseName.exe`n"
+[System.IO.File]::WriteAllText($HashPath, $HashContent, [System.Text.Encoding]::ASCII)
 
 Write-Host "One-file release complete: $Target"
 Write-Host "SHA-256: $Hash"

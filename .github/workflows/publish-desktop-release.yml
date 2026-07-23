@@ -228,6 +228,7 @@ jobs:
         run: |
           (
             cd release-assets
+            sed -i 's/\r$//' ./*.sha256.txt
             sha256sum --check \
               LiDARLabelTool_Integrated_*_windows_x86_64.sha256.txt
             sha256sum --check \

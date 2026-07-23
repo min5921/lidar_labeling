@@ -1,9 +1,9 @@
 ## 배포 파일
 
-- `LiDARLabelTool_Integrated_0.2.1_windows_x86_64.exe`
-- `LiDARLabelTool_Integrated_0.2.1_windows_x86_64.sha256.txt`
-- `LiDARLabelTool_Integrated_0.2.1_linux_x86_64.tar.gz`
-- `LiDARLabelTool_Integrated_0.2.1_linux_x86_64.tar.gz.sha256.txt`
+- `LiDARLabelTool_Integrated_0.2.2_windows_x86_64.exe`
+- `LiDARLabelTool_Integrated_0.2.2_windows_x86_64.sha256.txt`
+- `LiDARLabelTool_Integrated_0.2.2_linux_x86_64.tar.gz`
+- `LiDARLabelTool_Integrated_0.2.2_linux_x86_64.tar.gz.sha256.txt`
 
 Windows 10/11 x64와 Ubuntu 22.04 이상 x86_64를 지원한다. 두 배포본 모두 Python, pip, ROS2를
 별도로 설치하지 않고 통합 GUI에서 데이터 변환, 재동기화, calibration 생성·검증, preflight,

@@ -1,4 +1,4 @@
-# LiDAR Label Tool Linux 0.2.1
+# LiDAR Label Tool Linux 0.2.2
 
 ## 지원 환경
 
@@ -13,8 +13,8 @@ Python, pip, ROS2, PowerShell은 설치하지 않는다.
 터미널에서 압축을 풀고 실행한다.
 
 ```bash
-tar -xzf LiDARLabelTool_Integrated_0.2.1_linux_x86_64.tar.gz
-cd LiDARLabelTool_Integrated_0.2.1_linux_x86_64
+tar -xzf LiDARLabelTool_Integrated_0.2.2_linux_x86_64.tar.gz
+cd LiDARLabelTool_Integrated_0.2.2_linux_x86_64
 ./LiDARLabelTool
 ```
 
