@@ -1,9 +1,9 @@
-# 통합 데스크톱 워크플로 v0.2.0
+# 통합 데스크톱 워크플로 v0.3.0
 
 ## 1. 목표
 
-`LiDARLabelTool.exe` 하나에서 다음 사용자 작업을 수행한다. 사용자는 PowerShell, BAT, Python,
-ROS2를 직접 실행하거나 설치하지 않는다.
+Windows/Linux 소스 가상환경에서 실행한 통합 GUI 하나로 다음 사용자 작업을 수행한다.
+사용자는 ROS2나 별도 MCAP 도구를 설치하지 않는다.
 
 - 변환된 device-centric dataset 열기
 - one_chip 형식 MCAP와 calibration YAML을 새 dataset으로 변환
@@ -13,17 +13,16 @@ ROS2를 직접 실행하거나 설치하지 않는다.
 - calibration 구조·원본 YAML 대조·projection overlay 검증
 - 작업 라벨을 명시적으로 export
 
-앱 빌드, 릴리스 ZIP 생성, 코드 서명은 개발자 작업이므로 실행 중인 제품 EXE에 넣지 않는다.
+가상환경 설치와 dependency 업데이트는 setup/개발 작업이므로 실행 중인 GUI에 넣지 않는다.
 
 ## 2. 배포와 데이터 경계
 
-- 사용자 배포본은 PyInstaller one-file `LiDARLabelTool.exe`를 기본으로 한다.
-- 장애 분석용 one-folder 빌드도 같은 소스와 버전으로 생성한다.
-- 원본 MCAP, calibration YAML, 변환 dataset, 작업 라벨, export 결과는 EXE 밖에 둔다.
+- 실험실 운영본은 Windows/Linux source 가상환경 실행을 기본으로 한다.
+- 원본 MCAP, calibration YAML, 변환 dataset, 작업 라벨, export 결과는 저장소 밖에 둔다.
 - 사용자가 source, calibration, output, workspace, export 경로를 직접 선택한다.
 - Windows 최근 경로와 사용자 설정은 `%LOCALAPPDATA%\LiDARLabelTool\` 아래에 저장한다.
 - Linux 설정은 XDG config, log는 XDG state, 사용자 데이터는 XDG data 경로에 저장한다.
-- crash log와 작업 log는 번들 또는 EXE 옆에 쓰지 않는다.
+- 설정과 작업 log는 저장소가 아니라 사용자 쓰기 가능 경로에 둔다.
 
 ## 3. 서비스 경계
 
@@ -120,17 +119,14 @@ camera frame convention, image mode를 편집할 수 있어야 한다. 경로를
 - UI에서만 yaw를 degree로 표시한다.
 - source label 저장, working save, 명시적 export는 서로 분리한다.
 
-## 8. 릴리스 Gate
+## 8. 내부 운영 Gate
 
 - `pytest`, `ruff check .`, `git diff --check` 통과
-- one-file과 one-folder 빌드 성공
-- EXE 버전 정보, 제품명, 파일 설명과 앱 아이콘 포함
-- third-party license 목록 포함
-- release ZIP/EXE SHA-256 기록
+- Windows/Linux 고정 가상환경 설치 성공
+- source 환경 검증, Ruff, pytest 성공
+- 동일 commit과 dependency lock 기록
 - 실제 `one_chip_converted` preflight와 calibration verification 통과
-- Python 미설치 Windows 10/11 x64에서 실행
+- Python 3.10+ Windows/Linux 실험실 PC에서 setup 후 실행
 - 한글·공백 경로에서 source 선택, 변환, dataset open, edit, save, reload 성공
 - 취소·실패 후 기존 dataset과 `frames.jsonl` 보존
-- Windows Defender/SmartScreen, OpenGL, 원격 데스크톱 결과 기록
-
-코드 서명이 없으면 배포 기록에 명시하고 SmartScreen 경고 가능성을 사용자에게 안내한다.
+- Windows/Linux OpenGL과 원격 데스크톱 결과 기록

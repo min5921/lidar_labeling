@@ -43,14 +43,14 @@ cd C:\Users\USER\Desktop\Labelling_tool
 먼저 preflight를 실행한다.
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe preflight `
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight `
   .\local_data\incoming\merged_device_full
 ```
 
 JSON으로 저장해서 피드백에 첨부하고 싶으면 다음처럼 실행한다.
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe preflight `
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight `
   .\local_data\incoming\merged_device_full --json
 ```
 
@@ -87,7 +87,7 @@ C:\Users\USER\Desktop\Labelling_tool\run_gui.bat
 PowerShell에서 직접 열 수도 있다.
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe gui `
+.\.venv\Scripts\python.exe -m lidar_label_tool gui `
   .\local_data\incoming\merged_device_full
 ```
 
@@ -326,14 +326,14 @@ projection이 이상해 보이면 다음을 기록한다.
 source label 기준 통계:
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe stats `
+.\.venv\Scripts\python.exe -m lidar_label_tool stats `
   .\local_data\incoming\merged_device_full
 ```
 
 working label 기준 통계:
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe stats `
+.\.venv\Scripts\python.exe -m lidar_label_tool stats `
   .\local_data\incoming\merged_device_full --working
 ```
 
@@ -352,7 +352,7 @@ working label 기준 통계:
 내부 JSON export:
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe export `
+.\.venv\Scripts\python.exe -m lidar_label_tool export `
   .\local_data\incoming\merged_device_full `
   --format lidar_label_json `
   --output .\local_data\exports\lidar_label_json
@@ -361,7 +361,7 @@ working label 기준 통계:
 CenterPoint 중간 JSON export:
 
 ```powershell
-.\.venv\Scripts\lidar-label-tool.exe export `
+.\.venv\Scripts\python.exe -m lidar_label_tool export `
   .\local_data\incoming\merged_device_full `
   --format centerpoint_intermediate_json `
   --output .\local_data\exports\centerpoint_intermediate_json
@@ -443,4 +443,4 @@ UI가 불편한 경우는 버그가 아니어도 적어 준다.
 - GUI export 대화상자는 아직 없고 CLI export를 사용한다.
 - source-compatible export는 아직 없다.
 - camera projection은 calibration geometry 확인용이며 rolling shutter, sensor timestamp 차이, motion compensation은 아직 반영하지 않는다.
-- Windows portable build 절차는 준비되어 있지만 clean PC 최종 인증은 별도 검증이 필요하다.
+- 실험실 PC마다 Python 3.10+ 가상환경 설치가 필요하다.

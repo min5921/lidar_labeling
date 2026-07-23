@@ -94,16 +94,15 @@
 
 완료 기준: 알려진 합성 calibration과 실제 샘플 양쪽에서 투영 방향을 시각 검증한다.
 
-## Phase 7 — Windows 배포
+## Phase 7 — 실험실 소스 운영
 
-- `pyside6-deploy` standalone 설정과 재현 가능한 build script
-- config/schema/icon 및 필요한 Qt/OpenGL plugin 포함
-- version 정보와 third-party license 포함
-- portable 폴더 생성 후 ZIP과 SHA-256 checksum 생성
-- Python 미설치 Windows 10/11 x64 clean VM smoke test
-- 안정화 후 선택적으로 설치형 EXE 생성
+- Windows/Linux Python 3.10+ setup/run script
+- runtime/development dependency lock
+- source 환경과 기본 설정 자동 검증
+- Windows Server 2022와 Ubuntu 22.04 CI
+- 한글/공백 경로와 외부 데이터셋 smoke test
 
-완료 기준: 새 PC에서 압축 해제 후 앱이 실행되고, 한글/공백 경로의 외부 데이터셋을 열어 라벨 생성·저장·재로드까지 성공한다.
+완료 기준: 새 실험실 PC에서 setup 후 앱이 실행되고, 외부 데이터셋을 열어 라벨 생성·저장·재로드까지 성공한다.
 
 ## 이후 확장
 

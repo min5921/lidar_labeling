@@ -51,7 +51,7 @@
 - dirty frame 주기 복구 snapshot과 복원/무시/삭제 사용자 선택
 - PID/hostname 기반 dataset session lock, stale/malformed 교체, 소유권 안전 해제
 - `centerpoint_intermediate_json` 명시적 exporter와 단일/다중 frame CLI export
-- Windows PyInstaller one-folder 빌드 스크립트와 clean-PC 검증 문서
+- Windows/Linux source 가상환경 setup과 clean-environment 검증 문서
 - 전체 frame/센서 파일·라벨·보정·작업 상태의 구조화된 preflight report
 - CLI preflight 종료 코드 0/1/2와 GUI 한국어 QA 요약
 - source/working 분리 label stats와 recovery 수 집계
@@ -61,8 +61,8 @@
 - 키보드 이동·미세 이동·크기·yaw 간격의 실행 중 UI 조절
 - one_chip `header_aligned` nearest sync와 camera 반복/점프 QA report
 - 단순 `lidar/`, `cam_left/`, `cam_right/` 출력과 legacy 구조 호환
-- PyInstaller frozen resource 경로와 사용자 AppData crash log
-- 재현 가능한 portable 릴리스 폴더/ZIP/SHA-256 패키징
+- 사용자 AppData/XDG 설정·로그 경로
+- 재현 가능한 runtime/development dependency lock
 - source/calibration fingerprint 변경의 preflight·GUI 경고와 저장 전 재확인
 - working label의 알 수 없는 frame/object field round-trip 보존
 

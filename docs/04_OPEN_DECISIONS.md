@@ -14,7 +14,7 @@
 | D08 | 빈 프레임 | 빈 `objects` JSON 저장 |
 | D09 | attributes | `difficulty` 문자열, `occluded`·`truncated` boolean |
 | D10 | yaw 표시 | UI degree, 내부·JSON radian |
-| D11 | 첫 배포 | portable ZIP 우선, 안정화 후 설치형 EXE |
+| D11 | 내부 운영 | Windows/Linux 소스 + 고정 가상환경 |
 | D12 | 운영체제 | Windows 10/11 x64 |
 | D13 | 대상 PC Python | 설치 불필요 |
 | D14 | 자동 업데이트 | 1차 제외, 수동 새 버전 설치 |
@@ -35,7 +35,7 @@ D25는 운영 GUI의 LiDAR 입력에 대해 D15~D17을 대체한다. LiDAR별 ca
 ## 릴리스 직전에 정할 항목
 
 - [ ] 앱 표시 이름: 임시안 `LiDAR Label Tool`
-- [ ] EXE 파일 이름: 임시안 `LidarLabelTool.exe`
+- [x] Python 미설치 실행 파일 배포는 내부 운영 범위에서 제외
 - [ ] 앱 아이콘 `.ico`
 - [ ] 제작자/회사명과 저작권 문구
 - [ ] 코드 서명 인증서 사용 여부
@@ -62,4 +62,4 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\<dataset_name>\
 - camera intrinsic, distortion, `T_camera_reference`
 - LiDAR별 timestamp 차이와 motion compensation 필요성
 - 대표 프레임 포인트 수와 렌더링 한도
-- 한글·공백 경로와 clean Windows 배포본 실행
+- 한글·공백 경로와 clean Windows/Linux 가상환경 실행

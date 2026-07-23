@@ -23,7 +23,7 @@ ENV/
 coverage.xml
 htmlcov/
 
-# Build and portable distribution outputs
+# Build and local package outputs
 .build/
 build/
 dist/

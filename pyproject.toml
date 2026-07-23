@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lidar-label-tool"
-version = "0.2.2"
+version = "0.3.0"
 description = "Multi-LiDAR and camera 3D bounding box labeling tool"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,7 +21,6 @@ gui = [
 ]
 validation = ["jsonschema>=4.20"]
 dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13"]
-portable = ["pyinstaller>=6,<7"]
 
 [project.scripts]
 lidar-label-tool = "lidar_label_tool.app.cli:main"

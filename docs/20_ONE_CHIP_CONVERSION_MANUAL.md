@@ -88,7 +88,6 @@ artifacts/one_chip_run_pack.zip
 | `03_resync_one_chip_70ms.bat` | 기존 변환 결과의 `sync/frames.jsonl`만 70 ms 기준으로 재생성 |
 | `04_stats_one_chip.bat` | source label 통계 확인 |
 | `05_write_calibration_json_only.bat` | calibration YAML만 `calibration.json`으로 변환 |
-| `06_build_portable_app.bat` | PyInstaller 포터블 앱 빌드 |
 | `07_verify_calibration.bat` | 원본 YAML과 변환 JSON 대조 및 projection overlay 생성 |
 
 각 `.bat`는 저장소 루트를 자동으로 찾아 실행하고, 기본 경로는 변환 스크립트 맨 위의 설정값을
@@ -375,38 +374,11 @@ E:\one_chip_converted\annotations\lidar_label_tool\.session.lock
 3. 움직이는 객체는 timestamp delta, rolling shutter, motion compensation 미적용 때문에 오차가 날 수 있음을 감안
 4. 필요하면 `--camera-frame-convention as_provided`로 calibration만 다시 만들어 비교
 
-## 8. 포터블 배포본 만들기
+## 8. 다른 실험실 PC에서 사용하기
 
-Python 없는 Windows PC에서 앱을 실행하려면 포터블 빌드를 만든다.
+프로젝트 저장소를 다른 PC에 clone 또는 pull한 뒤 Windows에서는 `setup_windows.bat`,
+Linux에서는 `./setup_linux.sh`를 한 번 실행한다. 이후 OS별 run 스크립트에서 원본과 export
+경로를 직접 선택한다.
 
-```powershell
-.\packaging\one_chip_run_pack\06_build_portable_app.bat
-```
-
-또는 직접:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\packaging\build_windows_portable.ps1
-```
-
-결과:
-
-```text
-dist\LiDARLabelTool\LiDARLabelTool.exe
-```
-
-주의: `LiDARLabelTool.exe` 하나만 복사하면 안 되고 `dist\LiDARLabelTool` 폴더 전체를 배포해야 한다.
-대용량 dataset인 `E:\one_chip_converted`는 앱 배포본에 포함하지 말고 별도로 전달한다.
-
-최종 전달용 폴더와 ZIP을 만들려면 다음을 이어서 실행한다.
-
-```powershell
-.\packaging\package_windows_release.ps1 `
-  -ReleaseName LiDARLabelTool_Portable_YYYYMMDD_rN `
-  -DefaultDatasetPath E:\one_chip_converted
-```
-
-다른 PC에서는 `Open_Configured_Dataset.bat`의 `DATASET` 한 줄을 실제 dataset 위치로 바꾸거나,
-dataset 폴더를 `Start_LiDAR_Label_Tool.bat` 위로 드래그한다. crash log는
-`%LOCALAPPDATA%\LiDARLabelTool\logs\LiDARLabelTool_crash.log`에서 확인한다.
+대용량 dataset인 `E:\one_chip_converted`는 저장소에 포함하지 않고 별도 저장장치나 실험실
+공유 스토리지로 전달한다. 자세한 절차는 `docs/31_LAB_SOURCE_SETUP.md`를 따른다.

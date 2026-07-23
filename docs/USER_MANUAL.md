@@ -12,10 +12,10 @@
 - camera calibration을 이용한 현재 3D 박스 실시간 투영
 - `dataset.json` 기반 `MERGED/000000.bin`, `000001.bin` 입력
 
-Windows v0.2.2 배포본은 단일 `LiDARLabelTool.exe`를 실행한다. Linux v0.2.2 배포본은 tar.gz를
-푼 뒤 확장자 없는 `LiDARLabelTool` 실행 파일을 사용한다. 기존 Windows r6 one-folder 배포본은
-`LiDARLabelTool.exe`와 `_internal/`을 함께 사용하며, 개발 PC에서는 `.venv`로 실행한다. 배포 사용
-PC에는 Python, ROS2, MCAP 패키지를 설치하지 않는다.
+현재 실험실 운영본은 Windows와 Linux 모두 소스 가상환경에서 실행한다. 각 PC에는 Python 3.10
+이상이 필요하지만 ROS2, MCAP SDK, PySide6 등을 따로 찾아 설치할 필요는 없다.
+`requirements-lock.txt`와 OS별 setup 스크립트가 필요한 Python package를 프로젝트 가상환경에
+설치한다.
 
 원본 라벨 파일은 선택 사항이다. 라벨이 없으면 객체 0개의 `unvisited` 프레임으로 열리고, 새 박스를 만든 뒤 작업 JSON으로 저장할 수 있다. Camera GT와 source projected 레이어만 비어 있으며 camera calibration이 있으면 live projection은 사용할 수 있다.
 
@@ -23,31 +23,30 @@ PC에는 Python, ROS2, MCAP 패키지를 설치하지 않는다.
 
 ## 2. 가장 쉬운 실행 방법
 
-v0.2.2 통합 배포본에서는 `LiDARLabelTool.exe`를 더블클릭한다. 첫 화면에서 데이터셋 열기,
-원본 변환, 재동기화, Calibration 생성·검증, Preflight, 통계, export를 선택한다. PowerShell과 BAT는
-사용하지 않는다.
+처음 받은 PC에서는 먼저 한 번만 환경을 설치한다.
 
-Linux v0.2.2 배포본은 다음처럼 실행한다. 제품 기능은 Windows 통합 EXE와 같다.
-
-```bash
-tar -xzf LiDARLabelTool_Integrated_0.2.2_linux_x86_64.tar.gz
-cd LiDARLabelTool_Integrated_0.2.2_linux_x86_64
-./LiDARLabelTool
-```
-
-Windows와 Linux의 만료 없는 공식 배포 파일은 다음 GitHub Release에서 받는다.
+Windows:
 
 ```text
-https://github.com/min5921/lidar_labeling/releases/latest
+setup_windows.bat
 ```
 
-Linux 최근 경로는 `${XDG_CONFIG_HOME:-$HOME/.config}/LiDARLabelTool/settings.ini`, crash log는
-`${XDG_STATE_HOME:-$HOME/.local/state}/LiDARLabelTool/logs/`에 저장된다.
+설치가 끝난 뒤 다음 파일을 더블클릭한다.
 
-기존 r6 one-folder 배포본은 EXE만 따로 복사하면 실행되지 않으므로 `_internal/` 폴더와 항상 함께
-둔다. r6의 `Start_LiDAR_Label_Tool.bat`는 기존 배포 호환용이다.
+```text
+run_windows.bat
+```
 
-개발 PC에서는 아래 방법을 사용한다.
+Linux:
+
+```bash
+chmod +x setup_linux.sh run_linux.sh
+./setup_linux.sh
+./run_linux.sh
+```
+
+첫 화면에서 데이터셋 열기, 원본 변환, 재동기화, Calibration 생성·검증, Preflight, 통계,
+export를 선택한다. 사용자 설정은 Windows의 AppData 또는 Linux의 XDG 사용자 경로에 저장된다.
 
 전체 변환된 merged 샘플을 바로 열려면 `run_merged_sample.bat`을 더블클릭한다.
 
@@ -68,12 +67,12 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
 
 작업 저장 폴더에 쓸 수 없으면 별도 작업 폴더 선택 창이 열린다. 이때 선택한 폴더 아래에 데이터셋 ID별 작업 라벨이 저장되며 원본 데이터셋은 변경하지 않는다.
 
-## 3. 개발 환경에서 PowerShell로 실행하는 방법
+## 3. 명령줄에서 실행하는 방법
 
 프로젝트 폴더에서 다음 명령을 실행한다.
 
 ```powershell
-.\run_gui.bat
+.\run_windows.bat
 ```
 
 샘플 경로를 직접 지정하려면 다음 명령을 사용한다.
@@ -89,17 +88,21 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
 .\.venv\Scripts\python.exe -m lidar_label_tool gui
 ```
 
-## 4. `.venv`가 없을 때
+Linux에서 데이터셋 경로를 직접 지정하려면 다음처럼 실행한다.
 
-이 단계는 개발 환경을 새로 구성할 때만 필요하다. Python 3.10 이상과 인터넷 연결이 필요하다.
-
-```powershell
-py -3.10 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[gui,validation]"
+```bash
+./run_linux.sh /data/one_chip_converted
 ```
 
-설치가 끝나면 `run_gui.bat`을 다시 실행한다.
+## 4. `.venv`가 없을 때
+
+`setup_windows.bat` 또는 `./setup_linux.sh`를 실행한다. setup은 `.venv`를 만들고,
+`requirements-lock.txt`의 정확한 버전을 설치한 뒤 프로그램과 기본 설정을 검증한다.
+Conda 환경을 사용하는 방법과 Linux 시스템 package 요구사항은
+`docs/31_LAB_SOURCE_SETUP.md`에 있다.
+
+기존 `.venv`의 Python 버전이 너무 낮거나 환경이 손상된 경우 `.venv`를 제거한 뒤 setup을 다시
+실행한다. 데이터셋과 작업 라벨은 저장소 밖에 있으므로 `.venv`를 다시 만들어도 변경되지 않는다.
 
 ## 5. 화면 구성
 
@@ -350,15 +353,16 @@ dataset/
 
 데이터셋을 열 때 저장 가능 여부를 먼저 시험한다. 읽기 전용 데이터셋이면 안내에 따라 별도 작업 폴더를 선택한다.
 
-### 포터블 앱이 바로 종료되는 경우
+### 프로그램이 바로 종료되는 경우
 
-crash log는 다음 사용자 쓰기 가능 경로에 생성된다.
+먼저 다음 환경 검사를 실행한다.
 
-```text
-%LOCALAPPDATA%\LiDARLabelTool\logs\LiDARLabelTool_crash.log
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_source_environment.py
 ```
 
-로그가 없으면 `_internal/` 폴더가 EXE 옆에 있는지 먼저 확인한다.
+Linux에서는 `./.venv/bin/python scripts/verify_source_environment.py`를 사용한다.
+소스 실행 중 처리되지 않은 오류는 run 스크립트를 실행한 terminal에 표시된다.
 
 ### 명시적 라벨 export
 
@@ -387,6 +391,4 @@ lidar-label-tool export <dataset> --format centerpoint_intermediate_json --outpu
 - frame reviewed/skipped workflow
 - source-compatible 별도 export
 - GUI export 대화상자
-- 코드 서명과 별도 Python 미설치 clean-PC 최종 인증
-
-Windows 포터블 빌드는 `docs/17_WINDOWS_PORTABLE_BUILD.md` 절차로 생성할 수 있다.
+- Python 미설치 PC용 단일 실행 파일 배포

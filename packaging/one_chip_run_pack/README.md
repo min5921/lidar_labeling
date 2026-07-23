@@ -21,7 +21,8 @@
 
 전체 재변환이 필요할 때만 `02_convert_one_chip_full.bat`를 사용한다. 기존 output은 덮어쓰지 않는다.
 
-포터블 앱 배포본은 `06_build_portable_app.bat`로 만든다. 결과 폴더는 `dist\LiDARLabelTool`이다.
+다른 PC에서는 저장소 루트의 `setup_windows.bat` 또는 `setup_linux.sh`로 소스 가상환경을 먼저
+구성한다. Python 미설치 실행 파일 배포는 현재 운영 범위가 아니다.
 
 `07_verify_calibration.bat`는 원본 calibration YAML과 변환된 `calibration.json`을 다시 비교하고,
 몇 개 대표 프레임에서 LiDAR 포인트를 카메라 이미지에 투영한 overlay를

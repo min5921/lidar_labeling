@@ -22,14 +22,13 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 - 카메라/객체 편집 패널 경량 분리와 카메라 픽셀맵 캐시 구현 완료
 - 내부 `FrameLabel` JSON exporter protocol·registry 확장점 구현 완료
 - 비정상 종료 복구 snapshot과 dataset session lock 구현 완료
-- CenterPoint 중간 JSON CLI export와 Windows portable 빌드 스크립트 추가
-- 재현 가능한 portable 릴리스 폴더/ZIP/SHA-256 패키징 스크립트 추가
-- frozen 기본 설정 경로와 사용자 AppData crash log 경로 분리
+- CenterPoint 중간 JSON CLI export 추가
+- 기본 설정과 사용자 AppData/XDG 설정 경로 분리
 - source/calibration fingerprint 변경 감지와 unknown label field 보존
 - 전체 프레임 dataset preflight, GUI QA 요약, source/working label 통계 CLI 추가
 - export class/finite/box 크기 선검증과 다중 frame 사전 검증 추가
 - Windows/Linux 공용 통합 GUI 진입점과 Linux XDG 설정·로그 경로 추가
-- Ubuntu 22.04 x86_64용 PyInstaller one-file CI 빌드·스모크·배포 패키징 추가
+- Windows/Linux 소스 가상환경 자동 설치·검증과 양쪽 운영체제 CI 추가
 
 확정된 구현 기본값은 `docs/04_OPEN_DECISIONS.md`에 있다.
 
@@ -51,20 +50,12 @@ Python 기반 LiDAR/카메라 3D 바운딩 박스 라벨링 도구이다. 확정
 14. `docs/14_UX_SAFETY_SPEC.md`
 15. `docs/15_IMPLEMENTATION_STATUS.md`
 16. `docs/16_IMPLEMENTATION_REVIEW.md`
-17. `docs/17_WINDOWS_PORTABLE_BUILD.md`
-18. `docs/18_PREFLIGHT_AND_QA.md`
-19. `docs/19_TRIAL_RUN_MANUAL.md`
-20. `docs/20_ONE_CHIP_CONVERSION_MANUAL.md`
-21. `docs/21_COMMIT_UPDATE_LOG.md`
-22. `docs/22_PORTABLE_DISTRIBUTION_CHECKLIST.md`
-23. `docs/23_PORTABLE_RELEASE_MANUAL.md`
-24. `docs/24_REQUIREMENTS_REAUDIT.md`
-25. `docs/25_INTEGRATED_DESKTOP_WORKFLOWS.md`
-26. `docs/26_ONEFILE_RELEASE_MANUAL.md`
-27. `docs/27_INTEGRATED_RELEASE_VERIFICATION.md`
-28. `docs/28_LINUX_PORTABLE_BUILD.md`
-29. `docs/29_LINUX_RELEASE_VERIFICATION.md`
-30. `docs/30_GITHUB_RELEASE.md`
+17. `docs/18_PREFLIGHT_AND_QA.md`
+18. `docs/19_TRIAL_RUN_MANUAL.md`
+19. `docs/20_ONE_CHIP_CONVERSION_MANUAL.md`
+20. `docs/21_COMMIT_UPDATE_LOG.md`
+21. `docs/25_INTEGRATED_DESKTOP_WORKFLOWS.md`
+22. `docs/31_LAB_SOURCE_SETUP.md`
 
 실제 실행과 조작은 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)를 따른다. 실제 데이터로 써보고
 피드백을 남길 때는 [`docs/19_TRIAL_RUN_MANUAL.md`](docs/19_TRIAL_RUN_MANUAL.md)를 순서대로
@@ -85,7 +76,7 @@ Labelling_tool/
 │  └─ label.schema.json        # 저장 라벨 형식 검증
 ├─ docs/                       # 요구사항, 구조, 데이터 계약, 구현 계획
 ├─ local_data/incoming/        # Git 제외: 전달받은 원본 샘플을 그대로 두는 곳
-├─ packaging/                  # 배포 설정과 설치 패키지 자료
+├─ packaging/                  # 실험실 변환 실행 보조 자료
 ├─ src/lidar_label_tool/
 │  ├─ app/                     # 시작점, 설정, 의존성 조립
 │  ├─ calibration/             # 멀티 센서 보정 적용·검증·수동 조정
@@ -109,13 +100,10 @@ Labelling_tool/
 
 `dataset/`은 저장소 안에 넣는 고정 폴더가 아니라 실행 시 사용자가 선택하는 외부 데이터 루트이다.
 
-Windows 10/11 x64에서는 Python 무설치 one-folder와 one-file EXE를 만들 수 있다. Linux는
-Ubuntu 22.04 x86_64를 기준으로 Python 무설치 one-file ELF 실행 파일과 tar.gz를 GitHub Actions에서
-네이티브 빌드한다. PyInstaller는 교차 컴파일러가 아니므로 각 운영체제 산출물은 해당 운영체제에서
-만든다. Windows 절차는 `docs/17_WINDOWS_PORTABLE_BUILD.md`, Linux 절차는
-`docs/28_LINUX_PORTABLE_BUILD.md`를 따른다. 사용자용 Windows/Linux 영구 배포본은
-[`GitHub Releases`](https://github.com/min5921/lidar_labeling/releases/latest)에서 받으며 태그 기반
-배포 절차는 `docs/30_GITHUB_RELEASE.md`에 있다.
+현재 운영 기준은 실험실 내부 소스 실행이다. Windows와 Linux에서 Python 3.10 이상을 설치한 뒤
+프로젝트별 `.venv` 또는 Conda 환경에 `requirements-lock.txt`의 고정 의존성을 설치한다.
+PyInstaller 실행 파일과 GitHub Release는 더 이상 현재 운영 배포 경로로 사용하지 않는다.
+설치, 실행, 업데이트, 다른 PC 검수 절차는 `docs/31_LAB_SOURCE_SETUP.md`를 따른다.
 
 ## 샘플 데이터 전달 위치
 
@@ -129,9 +117,9 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\<dataset_name>\
 
 ## 개발 실행
 
-현재 프로젝트 전용 가상환경은 `.venv`에 구성되어 있다.
-
-가장 간단한 방법은 `run_gui.bat`을 더블클릭하고 dataset 폴더를 선택하는 것이다.
+Windows에서는 `setup_windows.bat`을 한 번 실행한 뒤 `run_windows.bat`을 더블클릭한다.
+Linux에서는 `./setup_linux.sh`를 한 번 실행한 뒤 `./run_linux.sh`를 실행한다.
+두 실행 방식 모두 dataset 경로를 생략하면 통합 작업 선택 화면이 열린다.
 
 전체 변환된 merged 샘플은 `run_merged_sample.bat`을 더블클릭하면 바로 열린다.
 
@@ -156,5 +144,7 @@ C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\<dataset_name>\
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 ```
+
+Linux 명령은 `.venv\Scripts\python.exe` 대신 `./.venv/bin/python`을 사용한다.
 
 현재 GUI는 기존 3D 라벨을 먼저 불러오며, BEV 클릭 추가, 전체 3D 클릭 선택, BEV 이동·크기·yaw handle, SideView z·height handle, 키보드 편집, 신규 박스의 다음 프레임 이어받기, 삭제, Undo/Redo, 자동 저장을 지원한다. 한 LiDAR return이 손상되어도 다른 cloud와 camera/label은 계속 열며 센서별 `Load failed` 상태를 표시한다. 기본 화면은 전체 3D, camera, 선택 객체 중심 Object Detail 3D이며 BEV/side는 필요할 때 여는 보조 뷰다. Object Detail 3D 시점은 새 박스를 만들 때만 초기화되고 일반 편집과 프레임 이동에서는 유지된다. 저장 결과는 원본 `labels/`를 덮어쓰지 않고 데이터셋의 `annotations/lidar_label_tool/<frame>.json`에 기록하며 미저장 변경은 별도 `.recovery`에 보존한다. Camera GT와 source projected layer는 기본 OFF이고, calibration으로 현재 작업 3D box를 계산하는 live projection이 기본 ON이다. Exporter registry는 내부 JSON과 CenterPoint 중간 JSON을 제공하며 정상 저장과 분리되어 CLI에서 명시적으로 실행한다. GUI export 대화상자는 아직 없다.
