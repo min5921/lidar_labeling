@@ -108,7 +108,7 @@ venv와 Conda 환경을 한 실행에서 섞지 않는다.
 .\.venv\Scripts\python.exe scripts\convert_one_chip_dataset.py `
   --source E:\one_chip `
   --output E:\one_chip_converted `
-  --timestamp-source header `
+  --timestamp-source header_aligned `
   --sync-tolerance-ms 70
 ```
 
@@ -118,7 +118,7 @@ Linux:
 ./.venv/bin/python scripts/convert_one_chip_dataset.py \
   --source /data/one_chip \
   --output /data/one_chip_converted \
-  --timestamp-source header \
+  --timestamp-source header_aligned \
   --sync-tolerance-ms 70
 ```
 
