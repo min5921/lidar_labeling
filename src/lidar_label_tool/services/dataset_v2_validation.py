@@ -154,6 +154,20 @@ def validate_dataset_v2(
     return _DatasetV2Validator(root, manifest, schema_root).run()
 
 
+def validate_dataset_manifest_v2(
+    config_root: Path,
+    manifest: DatasetManifestV2,
+    *,
+    schema_root: Path | None = None,
+) -> DatasetV2ValidationReport:
+    """Validate an uncommitted manifest against files under a configuration root."""
+    return _DatasetV2Validator(
+        Path(config_root).resolve(),
+        manifest,
+        schema_root,
+    ).run()
+
+
 class _DatasetV2Validator:
     def __init__(
         self,

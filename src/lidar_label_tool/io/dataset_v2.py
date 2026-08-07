@@ -74,6 +74,15 @@ def load_dataset_manifest_v2(
             f"schema_version={header.schema_version!r}, layout={header.layout!r}"
         )
     document = read_json_document(header.path)
+    return parse_dataset_manifest_v2(document, schema_root=schema_root)
+
+
+def parse_dataset_manifest_v2(
+    document: Any,
+    *,
+    schema_root: Path | None = None,
+) -> DatasetManifestV2:
+    """Validate and parse an in-memory v2 manifest document."""
     validate_json_document(document, "dataset-v2.schema.json", resource_root=schema_root)
     data = cast(dict[str, Any], document)
     coordinate = cast(dict[str, Any], data["coordinate_system"])
