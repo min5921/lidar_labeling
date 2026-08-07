@@ -138,20 +138,19 @@ git pull
 
 | 작업 | 언제 사용하는가 |
 |---|---|
-| 데이터셋 열기 | 이미 변환된 `dataset.json` 폴더를 GUI로 엽니다. |
-| 원본 데이터 변환 | `calibration + rosbags`를 새 데이터셋으로 변환합니다. |
-| 기존 데이터 재동기화 | image·point는 유지하고 `sync/frames.jsonl`만 다시 만듭니다. |
-| Calibration JSON 생성 | calibration YAML에서 `calibration.json`을 만듭니다. |
-| Calibration 검증 | 원본 YAML 대조와 projection overlay를 확인합니다. |
+| 데이터 폴더/데이터셋 열기 | 기존 데이터셋을 열거나, JSON이 없는 LiDAR 폴더를 범용 v2로 구성합니다. |
+| 범용 v2 재동기화 | 변경 내용을 먼저 분석하고 새 frame-index generation을 원자적으로 적용합니다. |
 | 데이터셋 검사 | point·image·sync·calibration·label을 읽기 전용 검사합니다. |
 | 라벨 통계 | source/working label 수와 class 분포를 확인합니다. |
 | 라벨 내보내기 | 일반 저장과 분리된 명시적 export를 실행합니다. |
+| 고급 도구 — one_chip 레거시 | 특정 `calibration + rosbags` 입력의 변환·재동기화·검증을 보존합니다. |
 
 이미 변환된 데이터가 있다면 **데이터셋 검사 → 데이터셋 열기** 순서가 가장 안전합니다.
 
-> 아래 `원본 데이터 변환`과 `기존 데이터 재동기화`는 특정 one_chip 자료용 기존 v1 기능입니다.
-> 범용 데이터셋 v2는 현재 계약·스키마·읽기 전용 검증 기반까지 구현되어 있으며, 생성 화면은
-> 다음 단계에서 연결합니다.
+범용 입력 형식과 화면 구성 순서는
+[범용 데이터셋 v2 구성·사용 가이드](docs/33_GENERIC_DATASET_SETUP_GUIDE.md)를 확인합니다.
+`one_chip MCAP/ROS bag 변환`과 기존 결과 재동기화는 특정 자료용 v1 호환 기능이며 범용 입력
+기능이 아닙니다.
 
 ## 데이터 폴더 구조
 

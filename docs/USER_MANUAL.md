@@ -11,6 +11,9 @@
 - 기존 3D 박스 수정, 새 박스 추가, 삭제, Undo/Redo, 작업 JSON 저장
 - camera calibration을 이용한 현재 3D 박스 실시간 투영
 - `dataset.json` 기반 `MERGED/000000.bin`, `000001.bin` 입력
+- JSON이 없는 `.bin`/`.pcd` 폴더 자동 탐색과 범용 v2 구성
+- 여러 LiDAR 후보의 독립 profile, 카메라 0~1개, exact/timestamp-nearest index 생성
+- profile/LiDAR별 v2 작업 라벨, 외부 workspace, 분석 후 generation 재동기화
 
 현재 실험실 운영본은 Windows와 Linux 모두 소스 가상환경에서 실행한다. 각 PC에는 Python 3.10
 이상이 필요하지만 ROS2, MCAP SDK, PySide6 등을 따로 찾아 설치할 필요는 없다.
@@ -45,22 +48,28 @@ chmod +x setup_linux.sh run_linux.sh
 ./run_linux.sh
 ```
 
-첫 화면에서 데이터셋 열기, 원본 변환, 재동기화, Calibration 생성·검증, Preflight, 통계,
-export를 선택한다. 사용자 설정은 Windows의 AppData 또는 Linux의 XDG 사용자 경로에 저장된다.
+첫 화면에서 데이터 폴더 열기, 범용 v2 재동기화, Preflight, 통계, export를 선택한다. 특정
+one_chip 원본 변환·검증은 `고급 도구 — one_chip 레거시 전용`에 분리되어 있다. 사용자 설정은
+Windows의 AppData 또는 Linux의 XDG 사용자 경로에 저장된다.
 
 전체 변환된 merged 샘플을 바로 열려면 `run_merged_sample.bat`을 더블클릭한다.
 
 다른 데이터를 선택하려면:
 
 1. `C:\Users\USER\Desktop\Labelling_tool` 폴더를 연다.
-2. `run_gui.bat`을 더블클릭한다.
+2. `run_windows.bat`을 더블클릭한다.
 3. 폴더 선택 창에서 다음 샘플 폴더를 선택한다.
 
 ```text
 C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
 ```
 
-선택하는 폴더 바로 아래에 `dataset.json`과 `sensors`, `sync` 폴더가 있어야 한다. ZIP 파일이나 `incoming` 상위 폴더를 선택하면 안 된다. 기존 `schema.json + segment.json + frame_000` 샘플도 호환 adapter로 계속 열 수 있다.
+기존 데이터셋은 선택하는 폴더 바로 아래에 `dataset.json`이 있어야 한다. `dataset.json`이 없는
+일반 LiDAR 폴더를 선택하면 범용 구성 화면이 열리며, point columns·좌표계·선택적 camera와
+timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA를 확인한 다음
+`검증 결과로 생성`을 눌러야 프로그램이 필요한 JSON/index를 생성한다. 기존
+`schema.json + segment.json + frame_000` 샘플도 호환 adapter로 계속 열 수 있다. 자세한 구성법은
+[`33_GENERIC_DATASET_SETUP_GUIDE.md`](33_GENERIC_DATASET_SETUP_GUIDE.md)를 따른다.
 
 4. 데이터셋 확인 창에서 frame 수, LiDAR/camera 목록, 좌표계, 원본 라벨, 작업 저장 폴더를 확인한다.
 5. 내용이 맞으면 `예`를 눌러 연다.

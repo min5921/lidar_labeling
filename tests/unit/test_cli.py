@@ -123,6 +123,29 @@ class CliTests(unittest.TestCase):
             self.assertEqual(error_exit, 2)
             self.assertFalse(error_payload["valid"])
 
+    def test_resync_v2_creates_new_generation(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_v2_dataset(root, with_camera=True)
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(
+                    [
+                        "resync-v2",
+                        str(root),
+                        "--profile",
+                        "aeva_profile",
+                        "--json",
+                    ]
+                )
+
+            payload = json.loads(output.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["manifest_revision"], 2)
+            self.assertEqual(payload["sync_qa"]["lidar_frame_count"], 2)
+            self.assertTrue((root / "generations" / "generation-000002").is_dir())
+
     def test_stats_json_output(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

@@ -10,16 +10,17 @@
 - GUI/Qt와 독립된 immutable v2 domain model
 - schema와 sensor/profile/hash/path/frame binding을 검사하는 읽기 전용 semantic validator
 - `validate-v2` CLI와 LiDAR-only, camera 선택, 한글·공백 경로 회귀 테스트
-
-아직 연결하지 않음:
-
 - 폴더 자동 탐색과 `dataset.json` 생성 화면
 - timestamp CSV 선택과 deterministic sync index 생성
 - v2 runtime adapter와 profile별 working-label repository
 - GUI의 profile 선택, progress/cancel, 외부 workspace transaction
+- profile/LiDAR identity를 보존하는 recovery와 session lock
+- 분석 결과 확인 후 모든 profile을 한 generation으로 교체하는 원자적 재동기화
+- 원본 fingerprint 충돌, 취소, 저장 실패 rollback과 이전 generation 보존
+- 두 LiDAR·카메라·동일 frame ID·외부 workspace·한글/공백 경로 통합 테스트
 
-따라서 v2 구성은 아직 현재 GUI의 `데이터셋 열기`로 열지 않는다. 아래 항목은 기존 v1 및
-특수 one_chip 입력을 포함한 현재 운영 기능이다.
+GUI에서 `dataset.json`이 없는 폴더를 선택하면 범용 구성 화면으로 연결한다. 기존 v1,
+Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 기존 1차 구현
 
@@ -100,7 +101,8 @@
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 136개 통과
+- 전체 unit/integration/schema 회귀 테스트 186개 통과
+- 범용 v2 신규 모듈 mypy와 저장소 전체 Ruff 통과
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부
