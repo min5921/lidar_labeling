@@ -8,7 +8,12 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from lidar_label_tool.app.cli import _parser, main
-from tests.fixture_builders import create_device_dataset, source_object, write_source_labels
+from tests.fixture_builders import (
+    create_device_dataset,
+    create_v2_dataset,
+    source_object,
+    write_source_labels,
+)
 
 
 class CliTests(unittest.TestCase):
@@ -79,6 +84,44 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(output):
                 error_exit = main(["preflight", str(root), "--json"])
             self.assertEqual(error_exit, 2)
+
+    def test_validate_v2_json_output_and_exit_codes(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "한글 데이터 세트"
+            root.mkdir()
+            create_v2_dataset(root, with_camera=True)
+
+            output = StringIO()
+            with redirect_stdout(output):
+                valid_exit = main(["validate-v2", str(root), "--json"])
+            payload = json.loads(output.getvalue())
+            self.assertEqual(valid_exit, 0)
+            self.assertTrue(payload["valid"])
+            self.assertEqual(payload["dataset_id"], "ds_fixture_v2")
+            self.assertEqual(payload["profiles"][0]["frame_count"], 2)
+
+            camera = (
+                root
+                / "sensors"
+                / "camera"
+                / "HEAD_CAMERA"
+                / "images"
+                / "000000.jpg"
+            )
+            camera.unlink()
+            output = StringIO()
+            with redirect_stdout(output):
+                warning_exit = main(["validate-v2", str(root), "--json"])
+            self.assertEqual(warning_exit, 1)
+
+            lidar = root / "sensors" / "lidar" / "AEVA" / "frames" / "000000.bin"
+            lidar.unlink()
+            output = StringIO()
+            with redirect_stdout(output):
+                error_exit = main(["validate-v2", str(root), "--json"])
+            error_payload = json.loads(output.getvalue())
+            self.assertEqual(error_exit, 2)
+            self.assertFalse(error_payload["valid"])
 
     def test_stats_json_output(self) -> None:
         with TemporaryDirectory() as directory:

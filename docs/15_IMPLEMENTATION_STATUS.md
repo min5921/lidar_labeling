@@ -1,4 +1,27 @@
-# 1차 구현 상태
+# 구현 상태
+
+## 범용 데이터셋 v2 foundation
+
+완료:
+
+- 활성 LiDAR별 profile과 label identity 계약
+- dataset, frame-index, taxonomy, working-label JSON Schema
+- v1/v2를 구분하는 manifest header reader
+- GUI/Qt와 독립된 immutable v2 domain model
+- schema와 sensor/profile/hash/path/frame binding을 검사하는 읽기 전용 semantic validator
+- `validate-v2` CLI와 LiDAR-only, camera 선택, 한글·공백 경로 회귀 테스트
+
+아직 연결하지 않음:
+
+- 폴더 자동 탐색과 `dataset.json` 생성 화면
+- timestamp CSV 선택과 deterministic sync index 생성
+- v2 runtime adapter와 profile별 working-label repository
+- GUI의 profile 선택, progress/cancel, 외부 workspace transaction
+
+따라서 v2 구성은 아직 현재 GUI의 `데이터셋 열기`로 열지 않는다. 아래 항목은 기존 v1 및
+특수 one_chip 입력을 포함한 현재 운영 기능이다.
+
+## 기존 1차 구현
 
 ## 완료
 
@@ -77,7 +100,7 @@
 
 ## 테스트
 
-- unit/integration/schema 111개
+- 전체 unit/integration/schema 회귀 테스트 136개 통과
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부

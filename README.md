@@ -7,6 +7,7 @@ LiDAR point cloud와 좌·우 camera image를 함께 보면서 3D bounding box�
 > **처음 사용하는 분은 먼저 읽어 주세요.**
 > [초보자 설치·실행 가이드 (Word)](docs/LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx)에는
 > Git/Python 설치부터 데이터 변환, 검수, 다른 PC 인수 체크리스트까지 그림과 함께 정리되어 있습니다.
+> 개발 계약과 문서 우선순위는 [문서 안내](docs/README.md)에서 확인할 수 있습니다.
 
 ![처음 설치부터 데이터 열기까지의 전체 흐름](docs/images/beginner_workflow_ko.png)
 
@@ -147,6 +148,10 @@ git pull
 | 라벨 내보내기 | 일반 저장과 분리된 명시적 export를 실행합니다. |
 
 이미 변환된 데이터가 있다면 **데이터셋 검사 → 데이터셋 열기** 순서가 가장 안전합니다.
+
+> 아래 `원본 데이터 변환`과 `기존 데이터 재동기화`는 특정 one_chip 자료용 기존 v1 기능입니다.
+> 범용 데이터셋 v2는 현재 계약·스키마·읽기 전용 검증 기반까지 구현되어 있으며, 생성 화면은
+> 다음 단계에서 연결합니다.
 
 ## 데이터 폴더 구조
 
@@ -306,6 +311,7 @@ GUI에서 선택하거나 `scripts/convert_one_chip_dataset.py` 상단의 `User-
 
 ## 상세 매뉴얼
 
+- [문서 전체 안내와 우선순위](docs/README.md)
 - [초보자 설치·실행 가이드 (Word)](docs/LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx)
 - [GUI 사용자 매뉴얼](docs/USER_MANUAL.md)
 - [one_chip 변환 매뉴얼](docs/20_ONE_CHIP_CONVERSION_MANUAL.md)

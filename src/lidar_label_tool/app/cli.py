@@ -11,6 +11,10 @@ from lidar_label_tool.exporters import ExportBatchError
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
+from lidar_label_tool.services.dataset_v2_validation import (
+    DatasetV2ValidationReport,
+    validate_dataset_v2,
+)
 from lidar_label_tool.services.label_export import export_dataset_labels
 from lidar_label_tool.services.label_statistics import LabelStatistics, collect_label_statistics
 
@@ -52,6 +56,12 @@ def _parser() -> argparse.ArgumentParser:
     preflight_parser.add_argument("dataset", type=Path)
     preflight_parser.add_argument("--json", action="store_true", dest="as_json")
     preflight_parser.add_argument("--workspace", type=Path)
+    validate_v2_parser = subparsers.add_parser(
+        "validate-v2",
+        help="validate a generic dataset v2 configuration without modifying data",
+    )
+    validate_v2_parser.add_argument("dataset", type=Path)
+    validate_v2_parser.add_argument("--json", action="store_true", dest="as_json")
     stats_parser = subparsers.add_parser("stats", help="summarize source or working labels")
     stats_parser.add_argument("dataset", type=Path)
     stats_parser.add_argument("--working", action="store_true")
@@ -174,6 +184,44 @@ def _preflight(args: argparse.Namespace) -> int:
     return report.exit_code
 
 
+def _print_v2_validation(report: DatasetV2ValidationReport) -> None:
+    manifest = report.manifest
+    print(f"Dataset: {manifest.dataset_id if manifest is not None else 'unknown'}")
+    print("Schema: 2.0 (device_centric_v2)")
+    print(f"Config root: {report.config_root}")
+    print(f"Data root: {report.data_root or 'unavailable'}")
+    print(
+        f"Profiles: {len(report.frame_indexes)}, "
+        f"frames={sum(len(item.records) for item in report.frame_indexes)}"
+    )
+    print(
+        f"Issues: errors={report.error_count}, warnings={report.warning_count}"
+    )
+    if report.issues:
+        print("\nIssues:")
+        for issue in report.issues:
+            context = " ".join(
+                value
+                for value in (
+                    issue.profile_id,
+                    issue.frame_id,
+                    str(issue.path or ""),
+                )
+                if value
+            )
+            suffix = f" {context}" if context else ""
+            print(f"[{issue.severity}] {issue.code}{suffix} — {issue.message}")
+
+
+def _validate_v2(args: argparse.Namespace) -> int:
+    report = validate_dataset_v2(args.dataset)
+    if args.as_json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        _print_v2_validation(report)
+    return report.exit_code
+
+
 def _print_statistics(statistics: LabelStatistics) -> None:
     statuses = dict(statistics.status_counts)
     print(f"Dataset: {statistics.dataset_id}")
@@ -229,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
             return _export(args)
         if args.command == "preflight":
             return _preflight(args)
+        if args.command == "validate-v2":
+            return _validate_v2(args)
         if args.command == "stats":
             return _stats(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError, ExportBatchError) as exc:

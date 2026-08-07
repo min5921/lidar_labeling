@@ -9,6 +9,7 @@ description = "Multi-LiDAR and camera 3D bounding box labeling tool"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "jsonschema>=4.20",
   "numpy>=1.26",
   "Pillow>=10"
 ]
@@ -19,7 +20,6 @@ gui = [
   "pyqtgraph>=0.13,<0.15",
   "PyOpenGL>=3.1"
 ]
-validation = ["jsonschema>=4.20"]
 dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13"]
 
 [project.scripts]
@@ -30,6 +30,7 @@ where = ["src"]
 
 [tool.setuptools.data-files]
 "share/lidar-label-tool/configs" = ["configs/default.json"]
+"share/lidar-label-tool/schemas" = ["schemas/*.json"]
 
 [tool.ruff]
 line-length = 100

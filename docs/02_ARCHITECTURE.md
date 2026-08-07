@@ -32,6 +32,7 @@ exporters: domain을 외부 포맷으로 변환
 - `LabeledObject`
 - `FrameLabel`
 - 값 범위 검증 및 JSON dictionary 변환
+- GUI 프레임워크에 의존하지 않는 범용 데이터셋 v2 manifest, profile, frame-index 값 객체
 
 ### `geometry/`
 
@@ -59,6 +60,13 @@ exporters: domain을 외부 포맷으로 변환
 - JSON label repository와 원자적 저장
 - source label importer와 working label repository 분리
 
+### `io/dataset_v2.py`, `io/json_schema.py`
+
+- `dataset.json` 헤더를 먼저 읽어 v1과 v2를 명시적으로 구분
+- Draft 2020-12 JSON Schema로 manifest, frame index, taxonomy 구조 검증
+- 검증된 JSON을 immutable v2 domain 객체로 변환
+- 개발 소스, 설치 package, frozen 실행에서 동일한 schema resource를 해석
+
 ### `io/adapters/`
 
 - `DeviceCentricAdapter`: 정식 sensor/device 중심 입력
@@ -75,6 +83,11 @@ exporters: domain을 외부 포맷으로 변환
 - 프레임 이동 전 저장 정책
 - calibration ON/OFF와 활성 LiDAR 상태
 - source frame data와 working label을 `FrameBundle`로 조합
+- 범용 v2의 sensor/profile 참조, hash, 경로 경계, frame binding을 읽기 전용으로 검증
+
+v2 구성·동기화·저장은 UI가 JSON을 직접 쓰지 않고 service 계층의 transaction을 통해 수행한다.
+현재 foundation은 읽기와 검증까지 구현되어 있고, 생성 transaction과 runtime adapter는 다음
+Gate에서 추가한다. 기존 v1 adapter와 one_chip 변환기는 호환 계층으로 유지한다.
 
 ### `workers/`
 

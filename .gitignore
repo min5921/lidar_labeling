@@ -77,6 +77,7 @@ local_data/incoming/*
 *.swp
 *.swo
 *~
+~$*
 
 # Operating-system files
 .DS_Store
