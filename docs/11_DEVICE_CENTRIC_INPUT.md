@@ -1,6 +1,11 @@
 # Device 중심 입력 구조
 
-## 권장 폴더
+> 이 문서의 `dataset.json` 1.0과 `MERGED + 다중 camera` 구조는 기존 데이터 호환 계약이다.
+> 새 범용 구성은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`와
+> `schemas/dataset-v2.schema.json`을 따른다. v2는 여러 LiDAR 후보를 발견할 수 있지만 profile당
+> 하나만 편집하고, 논리 camera는 0개 또는 1개이며, 앱 내부 LiDAR 병합을 금지한다.
+
+## v1 호환 폴더
 
 실제 운영 데이터는 frame 폴더를 반복하지 않고 sensor/device별로 모은다.
 단일 LiDAR와 좌/우 카메라처럼 장치 구성이 고정된 배포용 dataset은 사용자에게 보이는
@@ -54,7 +59,7 @@ dataset/
 앱에는 원본 LiDAR별 파일이 아니라 공통 좌표계로 사전 병합된 논리 `MERGED` 파일 하나를 전달한다.
 파일명은 연속 숫자일 필요가 없으며 sample ID 문자열로 취급한다. `.bin`과 `.pcd`를 지원한다.
 
-## Dataset manifest 예시
+## v1 Dataset manifest 예시
 
 ```json
 {

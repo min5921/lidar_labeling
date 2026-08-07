@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/recovery-v2.schema.json",
+  "title": "Profile-scoped v2 label recovery snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "dataset_id",
+    "profile_id",
+    "label_lidar_id",
+    "frame_id",
+    "reference_frame",
+    "profile_sha256",
+    "base_revision",
+    "base_label_sha256",
+    "created_at_utc",
+    "label"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "kind": { "const": "label_recovery" },
+    "dataset_id": { "$ref": "#/$defs/machineId" },
+    "profile_id": { "$ref": "#/$defs/machineId" },
+    "label_lidar_id": { "$ref": "#/$defs/machineId" },
+    "frame_id": { "$ref": "#/$defs/machineId" },
+    "reference_frame": { "type": "string", "minLength": 1 },
+    "profile_sha256": { "$ref": "#/$defs/sha256" },
+    "base_revision": { "type": "integer", "minimum": 0 },
+    "base_label_sha256": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/sha256" }
+      ]
+    },
+    "created_at_utc": { "type": "string", "format": "date-time" },
+    "label": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "dataset_id",
+        "profile_id",
+        "label_lidar_id",
+        "frame_id",
+        "reference_frame"
+      ],
+      "properties": {
+        "schema_version": { "const": "2.0" },
+        "dataset_id": { "$ref": "#/$defs/machineId" },
+        "profile_id": { "$ref": "#/$defs/machineId" },
+        "label_lidar_id": { "$ref": "#/$defs/machineId" },
+        "frame_id": { "$ref": "#/$defs/machineId" },
+        "reference_frame": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "The embedded label must also pass label-v2.schema.json. Runtime validation must require exact top-level/embedded identity equality and matching profile/base fingerprints.",
+  "$defs": {
+    "machineId": {
+      "type": "string",
+      "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$))[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9_-])?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

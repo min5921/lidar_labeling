@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/dataset-v2.schema.json",
+  "title": "Generic device-centric dataset manifest v2",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "display_name",
+    "manifest_revision",
+    "layout",
+    "data_root",
+    "coordinate_system",
+    "labeling_policy",
+    "lidars",
+    "camera",
+    "profiles",
+    "default_profile_id",
+    "taxonomy"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "dataset_id": { "$ref": "#/$defs/machineId" },
+    "display_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "manifest_revision": { "type": "integer", "minimum": 1 },
+    "layout": { "const": "device_centric_v2" },
+    "data_root": { "$ref": "#/$defs/dataRoot" },
+    "coordinate_system": { "$ref": "#/$defs/coordinateSystem" },
+    "labeling_policy": {
+      "type": "object",
+      "required": [
+        "active_lidar",
+        "merge_lidars",
+        "label_namespace",
+        "frame_id_policy"
+      ],
+      "properties": {
+        "active_lidar": { "const": "one_per_profile" },
+        "merge_lidars": { "const": false },
+        "label_namespace": { "const": "profile_lidar" },
+        "frame_id_policy": { "const": "logical_lidar_sample_id" }
+      },
+      "additionalProperties": false
+    },
+    "lidars": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/lidarSensor" }
+    },
+    "camera": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/cameraSensor" }
+      ]
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    },
+    "default_profile_id": { "$ref": "#/$defs/machineId" },
+    "taxonomy": { "$ref": "#/$defs/taxonomyReference" },
+    "metadata": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "camera": { "type": "null" } },
+        "required": ["camera"]
+      },
+      "then": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "properties": { "camera": { "type": "null" } }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$comment": "Sensor/profile ID uniqueness and all cross-reference, clock-domain, calibration, path containment, and file checks are mandatory runtime validations.",
+  "$defs": {
+    "machineId": {
+      "type": "string",
+      "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$))[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9_-])?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "configRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "dataRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "samplePattern": {
+      "allOf": [
+        { "$ref": "#/$defs/dataRelativePath" },
+        {
+          "pattern": "^[^{}]*\\{sample_id\\}[^{}]*$"
+        }
+      ]
+    },
+    "dataRoot": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "manifest_relative" },
+            "path": { "$ref": "#/$defs/configRelativePath" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "absolute_local" },
+            "path": {
+              "type": "string",
+              "pattern": "^(?:[A-Za-z]:[\\\\/]|/|\\\\\\\\).+"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "coordinateSystem": {
+      "type": "object",
+      "required": [
+        "unit",
+        "x_axis",
+        "y_axis",
+        "z_axis",
+        "yaw_axis",
+        "yaw_unit",
+        "yaw_zero",
+        "yaw_direction",
+        "box_center"
+      ],
+      "properties": {
+        "unit": { "const": "meter" },
+        "x_axis": { "const": "forward" },
+        "y_axis": { "const": "left" },
+        "z_axis": { "const": "up" },
+        "yaw_axis": { "const": "+z" },
+        "yaw_unit": { "const": "radian" },
+        "yaw_zero": { "const": "+x" },
+        "yaw_direction": { "const": "counterclockwise" },
+        "box_center": { "const": "geometric_center" }
+      },
+      "additionalProperties": false
+    },
+    "timestampSpec": {
+      "type": "object",
+      "required": [
+        "format",
+        "path",
+        "sample_id_column",
+        "value_column",
+        "unit",
+        "clock_domain",
+        "offset_ns",
+        "sha256"
+      ],
+      "properties": {
+        "format": { "const": "csv" },
+        "path": { "$ref": "#/$defs/dataRelativePath" },
+        "sample_id_column": { "type": "string", "minLength": 1 },
+        "value_column": { "type": "string", "minLength": 1 },
+        "unit": { "enum": ["ns", "us", "ms", "s"] },
+        "clock_domain": { "type": "string", "minLength": 1 },
+        "offset_ns": { "type": "integer" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "pointColumns": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "allOf": [
+        { "contains": { "const": "x" }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "const": "y" }, "minContains": 1, "maxContains": 1 },
+        { "contains": { "const": "z" }, "minContains": 1, "maxContains": 1 }
+      ]
+    },
+    "lidarSensor": {
+      "type": "object",
+      "required": [
+        "id",
+        "display_name",
+        "coordinate_frame",
+        "format",
+        "data_pattern",
+        "point_columns"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/machineId" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "coordinate_frame": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["bin", "pcd"] },
+        "data_pattern": { "$ref": "#/$defs/samplePattern" },
+        "point_columns": { "$ref": "#/$defs/pointColumns" },
+        "point_dtype": { "const": "float32" },
+        "byte_order": { "enum": ["little-endian", "big-endian"] },
+        "timestamp": { "$ref": "#/$defs/timestampSpec" }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "format": { "const": "bin" } }, "required": ["format"] },
+          "then": {
+            "required": ["point_dtype", "byte_order"],
+            "properties": {
+              "data_pattern": { "pattern": "\\.[bB][iI][nN]$" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "format": { "const": "pcd" } }, "required": ["format"] },
+          "then": {
+            "properties": {
+              "data_pattern": { "pattern": "\\.[pP][cC][dD]$" }
+            }
+          }
+        }
+      ]
+    },
+    "cameraSensor": {
+      "type": "object",
+      "required": ["id", "display_name", "coordinate_frame", "image_pattern"],
+      "properties": {
+        "id": { "$ref": "#/$defs/machineId" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "coordinate_frame": { "type": "string", "minLength": 1 },
+        "image_pattern": {
+          "allOf": [
+            { "$ref": "#/$defs/samplePattern" },
+            {
+              "pattern": "\\.(?:[jJ][pP][gG]|[jJ][pP][eE][gG]|[pP][nN][gG])$"
+            }
+          ]
+        },
+        "timestamp": { "$ref": "#/$defs/timestampSpec" }
+      },
+      "additionalProperties": false
+    },
+    "profileCamera": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": [
+            "camera_id",
+            "mode",
+            "calibration_path",
+            "calibration_sha256"
+          ],
+          "properties": {
+            "camera_id": { "$ref": "#/$defs/machineId" },
+            "mode": { "const": "display_only" },
+            "calibration_path": { "type": "null" },
+            "calibration_sha256": { "type": "null" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "camera_id",
+            "mode",
+            "calibration_path",
+            "calibration_sha256"
+          ],
+          "properties": {
+            "camera_id": { "$ref": "#/$defs/machineId" },
+            "mode": { "const": "calibrated" },
+            "calibration_path": { "$ref": "#/$defs/configRelativePath" },
+            "calibration_sha256": { "$ref": "#/$defs/sha256" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "generation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["method"],
+          "properties": {
+            "method": { "const": "lidar_only" },
+            "tolerance_ns": { "type": "null" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["method"],
+          "properties": {
+            "method": { "const": "exact_stem" },
+            "tolerance_ns": { "type": "null" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["method", "tolerance_ns"],
+          "properties": {
+            "method": { "const": "timestamp_nearest" },
+            "tolerance_ns": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "frameIndex": {
+      "type": "object",
+      "required": ["schema_version", "path", "sha256", "frame_count", "generation"],
+      "properties": {
+        "schema_version": { "const": "2.0" },
+        "path": { "$ref": "#/$defs/configRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "frame_count": { "type": "integer", "minimum": 1 },
+        "generation": { "$ref": "#/$defs/generation" }
+      },
+      "additionalProperties": false
+    },
+    "taxonomyReference": {
+      "type": "object",
+      "required": ["schema_version", "path", "sha256"],
+      "properties": {
+        "schema_version": { "const": "2.0" },
+        "path": { "$ref": "#/$defs/configRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "required": ["id", "display_name", "lidar_id", "camera", "frame_index"],
+      "properties": {
+        "id": { "$ref": "#/$defs/machineId" },
+        "display_name": { "type": "string", "minLength": 1 },
+        "lidar_id": { "$ref": "#/$defs/machineId" },
+        "camera": { "$ref": "#/$defs/profileCamera" },
+        "frame_index": { "$ref": "#/$defs/frameIndex" }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "camera": { "type": "null" } }, "required": ["camera"] },
+          "then": {
+            "properties": {
+              "frame_index": {
+                "properties": {
+                  "generation": {
+                    "properties": { "method": { "const": "lidar_only" } }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "frame_index": {
+                "properties": {
+                  "generation": {
+                    "properties": {
+                      "method": { "enum": ["exact_stem", "timestamp_nearest"] }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

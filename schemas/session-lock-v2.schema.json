@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/session-lock-v2.schema.json",
+  "title": "Profile and LiDAR scoped v2 session lock",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "dataset_id",
+    "profile_id",
+    "label_lidar_id",
+    "reference_frame",
+    "profile_sha256",
+    "pid",
+    "host",
+    "owner",
+    "started_at_utc",
+    "heartbeat_at_utc",
+    "tool_version",
+    "nonce"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "kind": { "const": "profile_session_lock" },
+    "dataset_id": { "$ref": "#/$defs/machineId" },
+    "profile_id": { "$ref": "#/$defs/machineId" },
+    "label_lidar_id": { "$ref": "#/$defs/machineId" },
+    "reference_frame": { "type": "string", "minLength": 1 },
+    "profile_sha256": { "$ref": "#/$defs/sha256" },
+    "pid": { "type": "integer", "minimum": 0 },
+    "host": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "started_at_utc": { "type": "string", "format": "date-time" },
+    "heartbeat_at_utc": { "type": "string", "format": "date-time" },
+    "tool_version": { "type": "string", "minLength": 1 },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "The lock path is the profile/LiDAR namespace. Stale-lock detection and PID/host liveness are runtime policies; frame_id and base_revision are intentionally forbidden.",
+  "$defs": {
+    "machineId": {
+      "type": "string",
+      "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$))[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9_-])?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

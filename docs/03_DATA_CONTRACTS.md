@@ -1,5 +1,9 @@
 # 데이터 계약
 
+> 범용 데이터셋의 최신 운영 계약은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`다.
+> 아래 `dataset.json` 1.0, `MERGED`, 다중 camera 설명은 기존 데이터 호환 계약으로 유지한다.
+> 새 데이터셋 구성 마법사는 v2만 생성한다.
+
 ## 원본 데이터 전달
 
 사용자가 준비한 원본은 이름과 구조를 바꾸지 않고 다음 위치에 둔다.
@@ -10,7 +14,7 @@ local_data/incoming/<dataset_name>/
 
 이 폴더는 Git에서 제외한다. 먼저 실제 구조를 검사한 뒤 아래의 정규화 구조에 대응하는 dataset adapter를 만든다. 원본을 강제로 이동하거나 rename하지 않는다.
 
-## 정식 device 중심 구조
+## v1 호환 device 중심 구조
 
 실제 운영 입력은 sensor/device별로 저장한다. 자세한 manifest와 동기화 규칙은 `docs/11_DEVICE_CENTRIC_INPUT.md`를 따른다.
 
@@ -78,12 +82,21 @@ loader는 raw NxC를 즉시 canonical `PointCloudData`로 분리한다. `xyz`는
 
 PCD는 v0.7 ASCII와 uncompressed binary를 지원한다. 운영 기본값은 용량과 로딩 속도가 유리한 little-endian float32 BIN이다. `binary_compressed` PCD는 현재 지원하지 않는다.
 
-정식 운영 입력은 frame당 `MERGED` LiDAR 파일 한 개다. 여러 원본 LiDAR의 extrinsic 적용과 병합은 전처리 단계에서 수행하며, 결과 파일의 좌표계가 manifest `reference_frame`과 같아야 한다.
+v1 운영 입력은 frame당 `MERGED` LiDAR 파일 한 개다. 여러 원본 LiDAR의 extrinsic 적용과 병합은 전처리 단계에서 수행하며, 결과 파일의 좌표계가 manifest `reference_frame`과 같아야 한다.
+v2는 label-ready LiDAR 후보를 여러 개 등록할 수 있지만 profile당 하나만 선택하며 앱에서 병합하지 않는다.
 
 ## 라벨 JSON
 
+v1 작업 라벨은 `schemas/label.schema.json`을 따른다. v2 작업 라벨은
+`schemas/label-v2.schema.json`을 따르며 identity와 저장 경로가 다음처럼 확장된다.
+
+```text
+dataset_id + profile_id + label_lidar_id + frame_id
+annotations/lidar_label_tool/<profile_id>/<label_lidar_id>/<frame_id>.json
+```
+
 - UTF-8, 들여쓰기 2칸, JSON object
-- 한 프레임당 작업 라벨 `annotations/lidar_label_tool/<frame_id>.json`
+- v1은 한 프레임당 작업 라벨 `annotations/lidar_label_tool/<frame_id>.json`
 - `schema_version`과 `reference_frame`을 저장한다.
 - stable `dataset_id`를 저장하여 외부 workspace의 frame ID 충돌을 막는다.
 - `point_cloud_paths`는 sensor ID별 return 파일 배열을 가진 데이터셋 상대 경로 map이다.
@@ -93,7 +106,7 @@ PCD는 v0.7 ASCII와 uncompressed binary를 지원한다. 운영 기본값은 �
 - 알 수 없는 attributes는 가능한 한 보존한다.
 - 작업 라벨에는 revision, 저장 시각, source fingerprint, calibration fingerprint를 기록한다.
 
-형식 검증은 `schemas/label.schema.json`을 따른다.
+v1 형식 검증은 `schemas/label.schema.json`을 따른다.
 
 ## 라벨 저장 위치와 우선순위
 
@@ -144,7 +157,7 @@ Calibration은 데이터셋/sequence 공통 `calibration/calibration.json`을 �
 
 외부 JSON의 `T_reference_sensor`는 로드 시 실제 sensor ID가 포함된 `T_<reference>_<sensor>` 내부 이름으로 바꾼다. 상세 검증 형식은 `schemas/calibration.schema.json`을 따른다.
 
-## Calibration Auto/ON/OFF 동작
+## v1 Calibration Auto/ON/OFF 동작
 
 - `auto`: sensor별 source coordinate frame을 확인한다. 이미 reference frame이면 변환하지 않고, sensor-local이면 유효한 행렬이 있을 때만 적용한다.
 - ON: sensor-local LiDAR에만 변환을 적용한다. 이미 reference frame인 점에는 다시 적용하지 않는다.

@@ -43,6 +43,22 @@ lidar-label-tool preflight <dataset> --workspace <workspace-root> --json
 - working label 수, 손상 파일, revision 최소/최대
 - recovery snapshot 수와 손상된 recovery 파일
 
+v2 profile은 다음을 추가로 검사한다.
+
+- manifest revision, dataset/profile/sensor ID 고유성과 참조 무결성
+- 선택 profile의 활성 LiDAR가 정확히 하나이고 다른 LiDAR가 로드 대상에 섞이지 않는지
+- `frame_id == label LiDAR 논리 sample_id`, 원본 sample ID/path 보존, ordinal 연속성과
+  frame index 전체 SHA-256/frame 수
+- timestamp CSV 컬럼·단위·clock domain·정수 ns 변환·sample ID 중복
+- nearest tolerance, delta 산술, unmatched 수, camera 반복 사용과 결정적 tie-break
+- profile당 camera 0~1과 `display_only`/`calibrated` 상태
+- taxonomy class ID/shortcut/mapping target 고유성과 fingerprint
+- working label의 profile/LiDAR/reference frame 및 manifest/index/taxonomy/point/calibration fingerprint
+- canonical profile과 LiDAR binding hash 불일치는 error, camera를 포함한 frame record 또는 image
+  hash만 바뀐 경우는 재검토 warning
+- recovery의 frame identity와 profile/LiDAR scope session lock identity
+- data/config path containment, 절대 sensor path와 `..`/symlink escape
+
 GUI 폴더 열기는 같은 구조 검사를 사용하지만 시작 시간을 줄이기 위해 이미지 전체 decode 검사는
 생략한다. source/working JSON과 포인트 파일 메타데이터는 확인한다.
 
@@ -52,6 +68,19 @@ GUI 폴더 열기는 같은 구조 검사를 사용하지만 시작 시간을 �
 - `warning`: 일부 카메라 누락, 읽을 수 없는 이미지, Unknown class, 선택 LiDAR calibration 문제,
   source/calibration fingerprint 변경
 - `error`: 포인트 파일 누락/빈 파일/stride 오류, 손상 source·working JSON, 사용 가능한 LiDAR 없음
+
+v2에서는 다음도 error다.
+
+- profile이 없거나 활성 LiDAR 참조가 잘못됨
+- 같은 profile에 둘 이상의 LiDAR를 활성화하거나 앱 내부 merge를 요청함
+- label identity 또는 frame-to-LiDAR binding 불일치
+- point format/columns/dtype/endian 또는 라벨 frame의 point byte fingerprint 변경
+- `timestamp_nearest` 두 센서의 clock domain 불일치
+- frame index hash/frame 수/ordinal/profile/sensor 참조 불일치
+- unsafe path 또는 읽기 경계 탈출
+
+카메라 누락·손상·unmatched와 calibration 없음/손상은 LiDAR 편집 자체를 막지 않는다.
+`calibrated` projection만 비활성화하고 원인과 다음 행동을 표시한다.
 
 GUI에서 error가 있어도 사용 가능한 LiDAR 프레임이 남아 있으면 경고 후 사용자가 계속할 수 있다.
 사용 가능한 LiDAR 프레임이 하나도 없으면 열지 않는다.

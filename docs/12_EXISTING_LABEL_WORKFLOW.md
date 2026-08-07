@@ -6,9 +6,24 @@ source label이 있는 frame을 열면 빈 화면에서 시작하지 않고 기�
 
 ## 로드 우선순위
 
+v1 호환 데이터:
+
 1. `<annotation_root>/<dataset_id>/annotations/lidar_label_tool/<frame_id>.json` 작업 라벨
 2. source `laser_labels.json` import
 3. 빈 `FrameLabel`
+
+v2 profile 데이터:
+
+1. `<annotation_root>/<dataset_id>/annotations/lidar_label_tool/<profile_id>/<label_lidar_id>/<frame_id>.json`
+2. profile에 명시된 source label importer 결과
+3. profile identity를 포함한 빈 `FrameLabel` v2
+
+v2 repository는 `dataset_id`, `profile_id`, `label_lidar_id`, `frame_id`, `reference_frame`을
+모두 검증한다. 다른 profile 또는 LiDAR의 같은 frame ID로 fallback하지 않는다.
+
+파일을 domain model로 읽기 전에 `schema_version`으로 v1/v2 parser와 repository를 분기한다.
+v2 파일은 v2 writer만 저장할 수 있고, v2 파일이 손상되어도 v1 작업 라벨이나 source label로
+조용히 fallback하지 않는다. v1을 v2로 쓰는 작업은 전용 migration service만 수행한다.
 
 첫 import 시 source path, source format, 원본 object ID를 provenance로 기록한다. 작업 라벨이 생긴 이후에는 앱 재실행 시 작업 라벨을 우선하여 이전 수정 결과가 사라지지 않게 한다.
 

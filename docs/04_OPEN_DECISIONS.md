@@ -32,6 +32,37 @@
 
 D25는 운영 GUI의 LiDAR 입력에 대해 D15~D17을 대체한다. LiDAR별 calibration 적용과 ON/OFF 비교는 원본→MERGED 전처리/검증 단계의 책임이며, 라벨링 GUI는 reference frame으로 확정된 MERGED 파일만 사용한다. Camera projection calibration은 GUI에서 계속 사용한다.
 
+## 범용 데이터셋 v2 추가 결정
+
+2026-08-07 범용 데이터 폴더 구성과 profile 기반 편집 계약을 확정했다. 아래 결정은 v2
+데이터셋에 대해 D15~D17, D24, D25의 운영 입력 범위를 대체한다. 기존 v1/Waymo/one_chip
+데이터는 호환 경로에서 기존 의미를 유지한다.
+
+| 번호 | 결정 내용 | 확정값 |
+|---|---|---|
+| D26 | v2 LiDAR inventory | label-ready LiDAR 후보 1개 이상 등록 가능 |
+| D27 | 편집 단위 | profile당 활성 LiDAR 정확히 1개, 편집 세션도 profile 하나 |
+| D28 | LiDAR 병합 | 앱 내부 자동 병합과 동시 box fitting 금지 |
+| D29 | v2 카메라 | profile당 0개 또는 1개, `display_only`/`calibrated` 구분 |
+| D30 | Dataset 구성 | `dataset.json`이 없으면 오류 대신 구성 마법사로 생성 |
+| D31 | 동기화 | LiDAR anchor, 명시적 method/tolerance, QA 확인 후 frozen frame index 생성 |
+| D32 | Frame identity | `frame_id`는 활성 LiDAR의 안전한 논리 `sample_id`와 같고 재동기화로 변경 금지; 원본 ID/path 별도 보존 |
+| D33 | Label identity | `dataset_id + profile_id + label_lidar_id + frame_id`, profile/LiDAR별 저장 namespace |
+| D34 | ID와 표시 이름 | machine ID는 안전한 소문자 ASCII, 한글·공백은 `display_name`에 보존 |
+| D35 | 읽기 전용 원본 | 외부 configuration workspace와 명시적 `data_root` overlay 지원 |
+| D36 | v1 호환 | v1은 계속 읽고 새 마법사는 v2만 생성, migration은 명시적·비파괴적으로 수행 |
+| D37 | Dataset taxonomy | v2는 stable `class_id`와 별도 `taxonomy.json`을 사용 |
+| D38 | Recovery와 lock identity | recovery는 frame scope, session lock은 profile/LiDAR namespace scope로 분리 |
+
+상세 규범은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`와 다음 schema를 따른다.
+
+- `schemas/dataset-v2.schema.json`
+- `schemas/frame-index-v2.schema.json`
+- `schemas/label-v2.schema.json`
+- `schemas/taxonomy.schema.json`
+- `schemas/recovery-v2.schema.json`
+- `schemas/session-lock-v2.schema.json`
+
 ## 릴리스 직전에 정할 항목
 
 - [ ] 앱 표시 이름: 임시안 `LiDAR Label Tool`

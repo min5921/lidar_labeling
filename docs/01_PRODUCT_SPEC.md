@@ -1,5 +1,9 @@
 # 제품 요구사항
 
+> 이 문서의 `MERGED + 다중 camera` 입력은 현재 v1 구현 범위다. 새 범용 입력의 확정 계약은
+> `docs/32_GENERIC_DATASET_V2_CONTRACT.md`이며, v2에서는 여러 LiDAR 후보 중 profile당 하나와
+> camera 0~1개만 사용하고 앱 내부 병합을 하지 않는다.
+
 ## 목표
 
 frame별로 공통 reference 좌표에 사전 병합된 LiDAR 포인트 클라우드 한 개와 여러 카메라 이미지를 함께 연다. 그 위에서 3D 바운딩 박스를 생성·선택·이동·크기 조절·회전·삭제한 뒤 프레임별 JSON으로 안전하게 저장하는 데스크톱 GUI를 만든다.

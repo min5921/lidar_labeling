@@ -17,6 +17,10 @@
 | point 표현 | UI가 raw column index에 의존할 위험 | canonical `xyz + named attributes`로 분리 |
 | exporter 책임 | source exporter와 generic exporter가 중복 | `LabelExporter` protocol 하나로 통합 |
 | working label 소유권 | adapter와 repository의 경계가 불명확 | adapter는 source-only, service가 working label을 조합 |
+| v2 LiDAR 선택 | `MERGED` 하나와 여러 LiDAR 동시 checkbox가 혼재 | inventory는 여러 개, profile/편집 세션은 정확히 하나 |
+| v2 label key | dataset/frame만으로 다른 LiDAR의 같은 frame ID 충돌 | dataset/profile/LiDAR/frame identity와 분리 namespace |
+| timestamp nearest | schema 선언과 미구현 runtime이 불일치 | 별도 sync service가 QA 후 frozen frame index 생성 |
+| manifest 없는 폴더 | adapter 오류 후 사용자가 JSON을 직접 작성 | read-only discovery와 구성 마법사가 v2 generation 생성 |
 
 ## P0 — 구현 전에 반드시 막을 위험
 
@@ -96,6 +100,29 @@
 - 결과: box와 최종 point 정렬이 달라져 편집 근거가 사라짐
 - 예방: calibration dirty/preview 상태에서는 annotation 편집을 잠그고 save-as/apply 또는 reset 후에만 재개
 - 사용자 동작: `보정 미확정` banner와 적용/저장/취소 선택 제공
+
+### R24. 다른 LiDAR profile 라벨 충돌
+
+- 발생: AEVA와 다른 LiDAR가 같은 `frame_id`를 사용하지만 기존 repository가 frame ID만 경로로 사용
+- 결과: 다른 좌표계의 라벨을 덮어쓰거나 잘못 불러옴
+- 예방: v2 identity를 `dataset_id + profile_id + label_lidar_id + frame_id`로 고정하고
+  profile/LiDAR별 namespace, semantic validator, session lock을 사용
+- 사용자 동작: 메인 편집 전에 profile 하나를 선택하고 다른 profile은 별도 세션으로 연다
+
+### R25. 재동기화가 기존 LiDAR label binding 변경
+
+- 발생: sync 재생성 중 순번 frame ID를 다시 붙여 같은 label이 다른 LiDAR sample을 가리킴
+- 결과: 정상 JSON이 다른 장면에 붙는 치명적인 오라벨
+- 예방: `frame_id == 활성 LiDAR 논리 sample_id`, 원본 ID/path 보존, LiDAR binding 변경 금지,
+  `lidar_binding_sha256`과 전체 `frame_record_sha256`을 분리 저장
+- 사용자 동작: old/new mapping diff와 camera 변경 frame 수를 확인한 뒤 적용
+
+### R26. Dataset 구성 다중 파일의 혼합 generation
+
+- 발생: taxonomy와 frame index는 새 파일인데 manifest 교체 전에 실패하거나 그 반대가 됨
+- 결과: 열리지만 class/sync 의미가 서로 다른 세대가 섞임
+- 예방: versioned generation을 먼저 완성·fsync·검증하고 `dataset.json`을 마지막 commit pointer로 원자 교체
+- 사용자 동작: 실패 시 기존 generation으로 돌아갔음을 확인하고 재시도
 
 ## P1 — 첫 사용자 테스트 전에 해결할 위험
 
@@ -182,6 +209,8 @@
 
 - NxC loader, frame/device adapter, sync, source frame 판정 테스트 통과
 - 현재 샘플 198 frame scan과 frame 000 label import 통과
+- v2 manifest/profile/frame-index/taxonomy/label schema와 runtime cross-reference 검증 통과
+- 한 profile의 활성 LiDAR 하나, camera 0~1, frame ID와 LiDAR sample ID 고정 검증
 
 ### Gate B — 안전한 편집
 

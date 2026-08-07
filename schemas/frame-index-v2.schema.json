@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/lidar-label-tool/frame-index-v2.schema.json",
+  "title": "Generic dataset frame index v2 JSONL record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profile_id",
+    "ordinal",
+    "frame_id",
+    "lidar",
+    "camera",
+    "match"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "profile_id": { "$ref": "#/$defs/machineId" },
+    "ordinal": { "type": "integer", "minimum": 0 },
+    "frame_id": { "$ref": "#/$defs/machineId" },
+    "lidar": {
+      "type": "object",
+      "required": [
+        "sensor_id",
+        "sample_id",
+        "source_sample_id",
+        "path",
+        "timestamp_ns"
+      ],
+      "properties": {
+        "sensor_id": { "$ref": "#/$defs/machineId" },
+        "sample_id": { "$ref": "#/$defs/machineId" },
+        "source_sample_id": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/dataRelativePath" },
+        "timestamp_ns": { "type": ["integer", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "camera": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": [
+            "sensor_id",
+            "sample_id",
+            "source_sample_id",
+            "path",
+            "timestamp_ns",
+            "delta_ns"
+          ],
+          "properties": {
+            "sensor_id": { "$ref": "#/$defs/machineId" },
+            "sample_id": { "$ref": "#/$defs/machineId" },
+            "source_sample_id": { "type": "string", "minLength": 1 },
+            "path": { "$ref": "#/$defs/dataRelativePath" },
+            "timestamp_ns": { "type": ["integer", "null"] },
+            "delta_ns": { "type": ["integer", "null"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "match": {
+      "type": "object",
+      "required": ["method", "status", "tolerance_ns"],
+      "properties": {
+        "method": { "enum": ["lidar_only", "exact_stem", "timestamp_nearest"] },
+        "status": { "enum": ["not_requested", "matched", "unmatched"] },
+        "tolerance_ns": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "match": {
+            "properties": { "method": { "const": "lidar_only" } },
+            "required": ["method"]
+          }
+        },
+        "required": ["match"]
+      },
+      "then": {
+        "properties": {
+          "camera": { "type": "null" },
+          "match": {
+            "properties": {
+              "status": { "const": "not_requested" },
+              "tolerance_ns": { "type": "null" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "match": {
+            "properties": { "method": { "const": "exact_stem" } },
+            "required": ["method"]
+          }
+        },
+        "required": ["match"]
+      },
+      "then": {
+        "properties": {
+          "match": {
+            "properties": {
+              "status": { "enum": ["matched", "unmatched"] },
+              "tolerance_ns": { "type": "null" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "match": {
+            "properties": { "method": { "const": "timestamp_nearest" } },
+            "required": ["method"]
+          }
+        },
+        "required": ["match"]
+      },
+      "then": {
+        "properties": {
+          "lidar": {
+            "properties": { "timestamp_ns": { "type": "integer" } }
+          },
+          "match": {
+            "properties": {
+              "status": { "enum": ["matched", "unmatched"] },
+              "tolerance_ns": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "match": {
+            "properties": { "status": { "const": "matched" } },
+            "required": ["status"]
+          }
+        },
+        "required": ["match"]
+      },
+      "then": { "properties": { "camera": { "type": "object" } } },
+      "else": { "properties": { "camera": { "type": "null" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "match": {
+            "properties": {
+              "method": { "const": "timestamp_nearest" },
+              "status": { "const": "matched" }
+            },
+            "required": ["method", "status"]
+          }
+        },
+        "required": ["match"]
+      },
+      "then": {
+        "properties": {
+          "camera": {
+            "type": "object",
+            "properties": {
+              "timestamp_ns": { "type": "integer" },
+              "delta_ns": { "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$comment": "The runtime validator must verify profile/sensor references, unique frame IDs, stable frame_id-to-LiDAR sample/path binding, method/status/camera consistency, and the tolerance invariant.",
+  "$defs": {
+    "machineId": {
+      "type": "string",
+      "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\.|$))[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9_-])?$"
+    },
+    "dataRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    }
+  }
+}

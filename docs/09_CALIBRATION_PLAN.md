@@ -1,6 +1,9 @@
 # 멀티 LiDAR 및 카메라 Calibration 계획
 
-> D25 변경: 운영 라벨링 GUI는 frame당 사전 보정·병합된 MERGED LiDAR 한 개만 입력받는다. 아래 LiDAR별 적용·조정 절차는 원본→MERGED 전처리/검증 도구의 책임으로 이동한다. GUI 런타임에서는 camera projection calibration만 사용한다.
+> 아래 D25와 `MERGED` 절차는 v1/one_chip 호환 경로에만 적용한다. 범용 v2는
+> `docs/32_GENERIC_DATASET_V2_CONTRACT.md`에 따라 profile당 label-ready LiDAR 하나를 그대로
+> 사용하고 앱 내부에서 병합하지 않는다. v2 camera calibration은 profile에 귀속되며, 없거나
+> 잘못되어도 LiDAR 라벨링은 계속한다.
 
 ## 1차 목표
 
