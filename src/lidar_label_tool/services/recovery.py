@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
 from lidar_label_tool.domain.labels import FrameLabel, utc_now_iso
@@ -68,8 +68,25 @@ class RecoverySnapshot:
 
 @dataclass(frozen=True, slots=True)
 class RecoveryReadResult:
-    snapshot: RecoverySnapshot | None
+    snapshot: RecoverySnapshotLike | None
     error: str | None = None
+
+
+class RecoverySnapshotLike(Protocol):
+    @property
+    def dataset_id(self) -> str: ...
+
+    @property
+    def frame_id(self) -> str: ...
+
+    @property
+    def base_revision(self) -> int: ...
+
+    @property
+    def created_at_utc(self) -> str: ...
+
+    @property
+    def label(self) -> FrameLabel: ...
 
 
 class RecoveryStore:

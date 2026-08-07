@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
@@ -11,8 +12,10 @@ from lidar_label_tool.io.dataset_v2 import load_dataset_manifest_v2
 from lidar_label_tool.services.dataset_discovery import discover_dataset
 from lidar_label_tool.services.dataset_setup import (
     CameraSetup,
+    DatasetSetupError,
     DatasetSetupRequest,
     LidarSetup,
+    analyze_generic_dataset,
     create_generic_dataset,
     taxonomy_from_config,
 )
@@ -20,6 +23,82 @@ from lidar_label_tool.services.dataset_v2_validation import validate_dataset_v2
 
 
 class DatasetSetupTests(unittest.TestCase):
+    def test_analysis_is_read_only_and_source_change_requires_reanalysis(self) -> None:
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            config_root = Path(directory) / "config"
+            point = source / "AEVA" / "000000.bin"
+            _point(point)
+            candidate = discover_dataset(source).lidars[0]
+            request = DatasetSetupRequest(
+                source_root=source,
+                config_root=config_root,
+                display_name="source",
+                dataset_id="ds_setup_analysis",
+                lidars=(
+                    LidarSetup(
+                        candidate=candidate,
+                        sensor_id="aeva",
+                        display_name="AEVA",
+                        coordinate_frame="lidar:AEVA",
+                        point_columns=("x", "y", "z", "intensity"),
+                        profile_id="aeva_profile",
+                        profile_display_name="AEVA",
+                        sync_method="lidar_only",
+                    ),
+                ),
+                taxonomy=_taxonomy(),
+                coordinate_system_confirmed=True,
+            )
+
+            analysis = analyze_generic_dataset(request)
+
+            self.assertEqual(analysis.sync_qa[0][1].lidar_frame_count, 1)
+            self.assertFalse(config_root.exists())
+            point.write_bytes(b"\x01" * 16)
+            with self.assertRaises(DatasetSetupError):
+                create_generic_dataset(
+                    replace(
+                        request,
+                        expected_source_inventory_sha256=(
+                            analysis.source_inventory_sha256
+                        ),
+                    )
+                )
+            self.assertFalse((config_root / "dataset.json").exists())
+
+    def test_rejects_corrupt_representative_pcd_before_creating_manifest(self) -> None:
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            config_root = Path(directory) / "config"
+            _write(source / "AEVA" / "000000.pcd", b"not a PCD payload")
+            candidate = discover_dataset(source).lidars[0]
+            request = DatasetSetupRequest(
+                source_root=source,
+                config_root=config_root,
+                display_name="source",
+                dataset_id="ds_corrupt_pcd",
+                lidars=(
+                    LidarSetup(
+                        candidate=candidate,
+                        sensor_id="aeva",
+                        display_name="AEVA",
+                        coordinate_frame="lidar:AEVA",
+                        point_columns=("x", "y", "z", "intensity"),
+                        profile_id="aeva_profile",
+                        profile_display_name="AEVA",
+                        sync_method="lidar_only",
+                    ),
+                ),
+                taxonomy=_taxonomy(),
+                coordinate_system_confirmed=True,
+            )
+
+            with self.assertRaises(DatasetSetupError):
+                create_generic_dataset(request)
+
+            self.assertFalse((config_root / "dataset.json").exists())
+
     def test_creates_multi_lidar_single_profile_namespaces_without_touching_source(self) -> None:
         with TemporaryDirectory() as directory:
             source = Path(directory) / "한글 원본 데이터"
@@ -153,6 +232,45 @@ class DatasetSetupTests(unittest.TestCase):
             self.assertFalse((config_root / "dataset.json").exists())
             self.assertFalse((config_root / "generations" / "generation-000001").exists())
 
+    def test_post_commit_validation_failure_rolls_back_owned_manifest_and_generation(self) -> None:
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            config_root = Path(directory) / "config"
+            _point(source / "AEVA" / "000000.bin")
+            candidate = discover_dataset(source).lidars[0]
+            request = DatasetSetupRequest(
+                source_root=source,
+                config_root=config_root,
+                display_name="source",
+                dataset_id="ds_post_commit_failure",
+                lidars=(
+                    LidarSetup(
+                        candidate=candidate,
+                        sensor_id="aeva",
+                        display_name="AEVA",
+                        coordinate_frame="lidar:AEVA",
+                        point_columns=("x", "y", "z", "intensity"),
+                        profile_id="aeva_profile",
+                        profile_display_name="AEVA",
+                        sync_method="lidar_only",
+                    ),
+                ),
+                taxonomy=_taxonomy(),
+                coordinate_system_confirmed=True,
+            )
+            before = _tree_hashes(source)
+
+            with patch(
+                "lidar_label_tool.services.dataset_setup.validate_dataset_v2",
+                side_effect=RuntimeError("injected final validation failure"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "injected final validation"):
+                    create_generic_dataset(request)
+
+            self.assertEqual(_tree_hashes(source), before)
+            self.assertFalse((config_root / "dataset.json").exists())
+            self.assertFalse((config_root / "generations" / "generation-000001").exists())
+
 
 def _taxonomy() -> dict[str, object]:
     return taxonomy_from_config(
@@ -178,6 +296,11 @@ def _point(path: Path) -> None:
 def _image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"image")
+
+
+def _write(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
 
 
 def _tree_hashes(root: Path, *, exclude_generated: bool = False) -> dict[str, str]:

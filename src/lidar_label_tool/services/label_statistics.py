@@ -8,10 +8,11 @@ from typing import Any, Mapping
 
 from lidar_label_tool.domain.labels import FRAME_STATUSES, FrameLabel, LabeledObject
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
+from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
-from lidar_label_tool.services.recovery import RecoveryStore
+from lidar_label_tool.services.recovery_factory import open_recovery_store
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,22 +57,23 @@ def collect_label_statistics(
     class_mapping: Mapping[str, str],
     working: bool = False,
     workspace_root: Path | None = None,
+    profile_id: str | None = None,
 ) -> LabelStatistics:
     """Collect source-only or working-only frame statistics without writing data."""
     root = Path(dataset_root).resolve()
-    adapter = open_dataset_adapter(root)
+    adapter = open_dataset_adapter(root, profile_id=profile_id)
     index = adapter.scan()
-    repository = (
-        LabelRepository.for_workspace(workspace_root, index.dataset_id)
-        if workspace_root is not None
-        else LabelRepository.for_sidecar(root, index.dataset_id)
-    )
+    repository = open_label_repository(adapter, workspace_root=workspace_root)
     importer = WaymoLabelImporter(
         class_mapping,
         source_format=(
-            "device_centric_json"
-            if isinstance(adapter, DeviceCentricAdapter)
-            else "waymo_frame_json"
+            "device_centric_v2"
+            if isinstance(adapter, DeviceCentricV2Adapter)
+            else (
+                "device_centric_json"
+                if isinstance(adapter, DeviceCentricAdapter)
+                else "waymo_frame_json"
+            )
         ),
     )
     object_counts: list[int] = []
@@ -130,7 +132,7 @@ def collect_label_statistics(
 
     for status in FRAME_STATUSES:
         status_counts.setdefault(status, 0)
-    recovery_store = RecoveryStore(repository.annotation_dir)
+    recovery_store = open_recovery_store(repository)
     recovery_count = (
         sum(1 for _ in recovery_store.recovery_dir.glob("*.recovery.json"))
         if recovery_store.recovery_dir.is_dir()

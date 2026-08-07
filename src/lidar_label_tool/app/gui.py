@@ -2,12 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from typing import Any
 
-from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QInputDialog,
+    QMessageBox,
+)
 
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
+from lidar_label_tool.io.adapters.frame_centric_waymo import WaymoFrameCentricAdapter
+from lidar_label_tool.io.labels.repository_factory import open_label_repository
+from lidar_label_tool.io.labels.v2_repository import V2LabelRepository
 from lidar_label_tool.services.dataset_preflight import (
     DatasetPreflight,
     PreflightReport,
@@ -19,7 +29,13 @@ from lidar_label_tool.services.session_lock import (
     SessionLockExistsError,
     SessionLockInfo,
 )
+from lidar_label_tool.services.session_lock_v2 import (
+    V2SessionLock,
+    V2SessionLockExistsError,
+    V2SessionLockInfo,
+)
 from lidar_label_tool.ui.main_window import MainWindow
+from lidar_label_tool.ui.dataset_setup_dialog import DatasetSetupDialog
 from lidar_label_tool.ui.workflow_dialog import WorkflowDialog
 
 
@@ -54,23 +70,27 @@ def _choose_workspace(dataset_root: Path, write_error: str | None) -> Path | Non
 
 
 def _acquire_session_lock(
-    dataset_root: Path, workspace_root: Path | None
-) -> SessionLock | None:
-    index = open_dataset_adapter(dataset_root).scan()
-    repository = (
-        LabelRepository.for_workspace(workspace_root, index.dataset_id)
-        if workspace_root is not None
-        else LabelRepository.for_sidecar(dataset_root, index.dataset_id)
+    dataset_root: Path,
+    workspace_root: Path | None,
+    profile_id: str | None = None,
+) -> SessionLock | V2SessionLock | None:
+    adapter = open_dataset_adapter(dataset_root, profile_id=profile_id)
+    index = adapter.scan()
+    repository = open_label_repository(adapter, workspace_root=workspace_root)
+    lock: Any = (
+        V2SessionLock(repository)
+        if isinstance(repository, V2LabelRepository)
+        else SessionLock(repository.annotation_dir)
     )
-    lock = SessionLock(repository.annotation_dir)
     inspection = lock.inspect()
     force = inspection.status in {"stale", "malformed"}
     if inspection.status == "active":
-        info = inspection.info
+        existing_info = inspection.info
         details = (
-            f"호스트: {info.hostname}\nPID: {info.pid}\n"
-            f"사용자: {info.username or '알 수 없음'}\n시작: {info.started_at_utc}"
-            if info is not None
+            f"호스트: {existing_info.hostname}\nPID: {existing_info.pid}\n"
+            f"사용자: {existing_info.username or '알 수 없음'}\n"
+            f"시작: {existing_info.started_at_utc}"
+            if existing_info is not None
             else "세션 정보 없음"
         )
         answer = QMessageBox.question(
@@ -91,14 +111,18 @@ def _acquire_session_lock(
             "기존 세션 잠금 파일을 읽을 수 없어 새 잠금으로 교체합니다.\n\n"
             f"{inspection.error or '형식 오류'}",
         )
-    info = SessionLockInfo.current(
-        dataset_id=index.dataset_id,
-        dataset_root=dataset_root,
-        workspace_root=workspace_root,
+    info: Any = (
+        V2SessionLockInfo.current(repository)
+        if isinstance(repository, V2LabelRepository)
+        else SessionLockInfo.current(
+            dataset_id=index.dataset_id,
+            dataset_root=dataset_root,
+            workspace_root=workspace_root,
+        )
     )
     try:
         lock.acquire(info, force=force)
-    except SessionLockExistsError as exc:
+    except (SessionLockExistsError, V2SessionLockExistsError) as exc:
         raced = exc.inspection.info
         raced_details = (
             f"호스트: {raced.hostname}\nPID: {raced.pid}\n시작: {raced.started_at_utc}"
@@ -117,6 +141,35 @@ def _acquire_session_lock(
             return None
         lock.acquire(info, force=True)
     return lock
+
+
+def _choose_v2_profile(dataset_root: Path) -> tuple[bool, str | None]:
+    adapter = open_dataset_adapter(dataset_root)
+    if not isinstance(adapter, DeviceCentricV2Adapter):
+        return True, None
+    manifest = adapter.manifest
+    if len(manifest.profiles) == 1:
+        return True, manifest.profiles[0].id
+    labels = [f"{profile.display_name} ({profile.id})" for profile in manifest.profiles]
+    default_index = next(
+        (
+            index
+            for index, profile in enumerate(manifest.profiles)
+            if profile.id == manifest.default_profile_id
+        ),
+        0,
+    )
+    selected, accepted = QInputDialog.getItem(
+        None,
+        "LiDAR 프로필 선택",
+        "이번 작업에서 사용할 LiDAR를 선택하세요. 여러 LiDAR를 합치지 않습니다.",
+        labels,
+        default_index,
+        False,
+    )
+    if not accepted:
+        return False, None
+    return True, manifest.profiles[labels.index(selected)].id
 
 
 def _confirm_dataset_open(
@@ -156,11 +209,17 @@ def _confirm_dataset_open(
     return answer == QMessageBox.StandardButton.Yes
 
 
-def run_gui(dataset_root: Path | None, config_path: Path) -> int:
+def run_gui(
+    dataset_root: Path | None,
+    config_path: Path,
+    *,
+    profile_id: str | None = None,
+) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("LiDAR Label Tool")
     interactive_selection = dataset_root is None
     selected_root = dataset_root
+    selected_profile_id: str | None = profile_id
     config = load_config(config_path)
 
     while True:
@@ -169,14 +228,46 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
             if workflow.exec() != QDialog.DialogCode.Accepted:
                 return 0
             selected_root = workflow.selected_dataset
+            selected_profile_id = None
             if selected_root is None:
                 return 0
 
+        assert selected_root is not None
+        if (
+            not (selected_root / "dataset.json").exists()
+            and not WaymoFrameCentricAdapter.can_open(selected_root)
+        ):
+            setup_dialog = DatasetSetupDialog(selected_root, config)
+            if setup_dialog.exec() != QDialog.DialogCode.Accepted:
+                if not interactive_selection:
+                    return 0
+                selected_root = None
+                selected_profile_id = None
+                continue
+            selected_root = setup_dialog.selected_config_root
+            selected_profile_id = setup_dialog.selected_profile_id
+            if selected_root is None:
+                if not interactive_selection:
+                    return 2
+                continue
+
+        opening_candidate = selected_root
         workspace_root: Path | None = None
         try:
-            preflight = inspect_dataset(selected_root)
+            profile_accepted = True
+            if selected_profile_id is None:
+                profile_accepted, selected_profile_id = _choose_v2_profile(opening_candidate)
+            if not profile_accepted:
+                if not interactive_selection:
+                    return 0
+                selected_root = None
+                continue
+            preflight = inspect_dataset(
+                opening_candidate,
+                profile_id=selected_profile_id,
+            )
         except (OSError, ValueError, KeyError) as exc:
-            _show_open_error(selected_root, exc)
+            _show_open_error(opening_candidate, exc)
             if not interactive_selection:
                 return 2
             selected_root = None
@@ -189,7 +280,11 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
                     return 0
                 selected_root = None
                 break
-            preflight = inspect_dataset(selected_root, workspace_root=workspace_root)
+            preflight = inspect_dataset(
+                selected_root,
+                workspace_root=workspace_root,
+                profile_id=selected_profile_id,
+            )
         if selected_root is None:
             continue
 
@@ -198,6 +293,7 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
             class_mapping=config["source_class_mappings"],
             workspace_root=workspace_root,
             verify_images=False,
+            profile_id=selected_profile_id,
         )
         if not _confirm_dataset_open(
             preflight, report, always_confirm=interactive_selection
@@ -207,11 +303,15 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
                 continue
             return 2 if report.error_count else 0
 
-        session_lock: SessionLock | None = None
+        session_lock: SessionLock | V2SessionLock | None = None
         assert selected_root is not None
         opening_root = selected_root
         try:
-            session_lock = _acquire_session_lock(opening_root, workspace_root)
+            session_lock = _acquire_session_lock(
+                opening_root,
+                workspace_root,
+                selected_profile_id,
+            )
             if session_lock is None:
                 if not interactive_selection:
                     return 0
@@ -222,6 +322,7 @@ def run_gui(dataset_root: Path | None, config_path: Path) -> int:
                 config_path,
                 workspace_root,
                 session_lock=session_lock,
+                profile_id=selected_profile_id,
             )
         except (OSError, ValueError, KeyError) as exc:
             if session_lock is not None:

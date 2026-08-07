@@ -103,18 +103,18 @@ def discover_dataset(
         _check_cancel(cancel_check)
         if progress is not None:
             progress(position, total, path)
-        suffix = path.suffix.lower()
-        if suffix == ".csv":
+        normalized_suffix = path.suffix.lower()
+        if normalized_suffix == ".csv":
             timestamp_paths.append(path)
             continue
-        if suffix in _LIDAR_SUFFIXES:
+        if normalized_suffix in _LIDAR_SUFFIXES:
             kind: SensorKind = "lidar"
-        elif suffix in _CAMERA_SUFFIXES:
+        elif normalized_suffix in _CAMERA_SUFFIXES:
             kind = "camera"
         else:
             continue
         relative_parent = path.parent.relative_to(source_root).as_posix()
-        groups.setdefault((kind, relative_parent, suffix), []).append(path)
+        groups.setdefault((kind, relative_parent, path.suffix), []).append(path)
 
     issues = list(walk_issues)
     candidates: list[SensorCandidate] = []
@@ -152,7 +152,7 @@ def discover_dataset(
                 kind=kind,
                 suggested_id=suggested_id,
                 display_name=display_name,
-                format=suffix[1:],
+                format=suffix[1:].lower(),
                 directory=directory,
                 data_pattern=(
                     f"{directory}/{{sample_id}}{suffix}"

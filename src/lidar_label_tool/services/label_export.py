@@ -7,8 +7,9 @@ from typing import Any
 
 from lidar_label_tool.exporters import create_default_registry, export_frames
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
+from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.frame_session import FrameSessionService
 
@@ -30,22 +31,23 @@ def export_dataset_labels(
     output: Path,
     frame_ids: Sequence[str] | None = None,
     workspace_root: Path | None = None,
+    profile_id: str | None = None,
 ) -> LabelExportResult:
     """Explicitly export labels without changing source or working labels."""
     root = Path(dataset_root).resolve()
-    adapter = open_dataset_adapter(root)
+    adapter = open_dataset_adapter(root, profile_id=profile_id)
     index = adapter.scan()
-    repository = (
-        LabelRepository.for_workspace(workspace_root, index.dataset_id)
-        if workspace_root is not None
-        else LabelRepository.for_sidecar(root, index.dataset_id)
-    )
+    repository = open_label_repository(adapter, workspace_root=workspace_root)
     importer = WaymoLabelImporter(
         config["source_class_mappings"],
         source_format=(
-            "device_centric_json"
-            if isinstance(adapter, DeviceCentricAdapter)
-            else "waymo_frame_json"
+            "device_centric_v2"
+            if isinstance(adapter, DeviceCentricV2Adapter)
+            else (
+                "device_centric_json"
+                if isinstance(adapter, DeviceCentricAdapter)
+                else "waymo_frame_json"
+            )
         ),
     )
     session = FrameSessionService(adapter, importer, repository)
@@ -54,9 +56,14 @@ def export_dataset_labels(
     if unknown:
         raise ValueError(f"unknown frame id(s): {', '.join(unknown)}")
     labels = tuple(session.open_frame(frame_id).label for frame_id in selected)
-    allowed_classes = tuple(str(item["name"]) for item in config["classes"])
+    allowed_classes = (
+        tuple(item.id for item in adapter.taxonomy.classes)
+        if isinstance(adapter, DeviceCentricV2Adapter)
+        else tuple(str(item["name"]) for item in config["classes"])
+    )
     exporter = create_default_registry(allowed_classes).get(export_format)
     target = Path(output).resolve()
+    exported: tuple[Path, ...]
     if len(labels) == 1 and target.suffix:
         exporter.export_frame(labels[0], target)
         exported = (target,)

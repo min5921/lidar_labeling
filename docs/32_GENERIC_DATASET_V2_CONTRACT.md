@@ -12,7 +12,8 @@
 ```
 
 종료 코드는 `0`(정상), `1`(LiDAR 작업을 막지 않는 warning), `2`(계약 위반 error)다.
-구성 마법사, sync 생성, v2 runtime adapter와 profile별 라벨 저장은 이후 Gate에서 연결한다.
+구성 마법사, deterministic sync 생성, v2 runtime adapter, profile별 라벨 저장과 generation 기반
+재동기화까지 연결되었다. 실제 장비 데이터와 clean PC 인증은 별도 운영 Gate로 계속 추적한다.
 
 ## 1. 규범 용어
 

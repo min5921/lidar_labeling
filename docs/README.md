@@ -6,12 +6,14 @@
 
 1. [`32_GENERIC_DATASET_V2_CONTRACT.md`](32_GENERIC_DATASET_V2_CONTRACT.md):
    활성 LiDAR 1개, 카메라 0~1개, timestamp, profile, 라벨 identity의 최종 계약
-2. [`04_OPEN_DECISIONS.md`](04_OPEN_DECISIONS.md): 확정 결정과 아직 보류된 범위
-3. [`03_DATA_CONTRACTS.md`](03_DATA_CONTRACTS.md): 기존 v1과 v2 데이터 구조의 경계
-4. [`18_PREFLIGHT_AND_QA.md`](18_PREFLIGHT_AND_QA.md): 열기 전 검사와 오류 등급
+2. [`33_GENERIC_DATASET_SETUP_GUIDE.md`](33_GENERIC_DATASET_SETUP_GUIDE.md):
+   원본 폴더 자동 탐색, 프로그램 내 구성, profile 선택과 재동기화 사용법
+3. [`04_OPEN_DECISIONS.md`](04_OPEN_DECISIONS.md): 확정 결정과 아직 보류된 범위
+4. [`03_DATA_CONTRACTS.md`](03_DATA_CONTRACTS.md): 기존 v1과 v2 데이터 구조의 경계
+5. [`18_PREFLIGHT_AND_QA.md`](18_PREFLIGHT_AND_QA.md): 열기 전 검사와 오류 등급
 
-v2 스키마 원본은 저장소의 `schemas/`에 있다. 현재 구현은 v2 파일을 읽고 검증하는 기반까지이며,
-데이터셋 생성 화면과 v2 라벨 저장소 연결은 다음 단계다.
+v2 스키마 원본은 저장소의 `schemas/`에 있다. 현재 GUI는 `dataset.json`이 없는 폴더를 구성
+화면으로 연결하고, profile별 v2 라벨 저장과 분석 후 원자적 재동기화를 지원한다.
 
 ## 현재 프로그램 사용
 

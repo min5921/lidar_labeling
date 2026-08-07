@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 
 CLASS_MAPPING = {
@@ -110,7 +111,10 @@ def create_v2_dataset(
         }
         if with_camera:
             image_path = f"sensors/camera/HEAD_CAMERA/images/{sample_id}.jpg"
-            (root / image_path).write_bytes(b"image")
+            Image.new("RGB", (32, 24), color=(20, 40, 60)).save(
+                root / image_path,
+                "JPEG",
+            )
             camera_record = {
                 "sensor_id": "head_camera",
                 "sample_id": sample_id,

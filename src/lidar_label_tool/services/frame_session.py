@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 from lidar_label_tool.domain.labels import FrameLabel
 from lidar_label_tool.io.dataset import DatasetAdapter, SourceFrameData
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.repository_factory import WorkingLabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter, sha256_file
 
 
@@ -49,6 +49,8 @@ def compare_label_context(
     label: FrameLabel, source: SourceFrameData
 ) -> tuple[LabelContextIssue, ...]:
     """Compare saved source/calibration fingerprints with current dataset files."""
+    if source.metadata.get("schema_version") == "2.0":
+        return _compare_v2_label_context(label, source)
     issues: list[LabelContextIssue] = []
     raw_fingerprints = label.provenance.get("source_fingerprints", {})
     expected_sources = (
@@ -105,6 +107,10 @@ def compare_label_context(
 
 def refresh_label_context(label: FrameLabel, source: SourceFrameData) -> FrameLabel:
     """Acknowledge current source/calibration files after explicit user confirmation."""
+    if source.metadata.get("schema_version") == "2.0":
+        # V2LabelRepository rebuilds the complete, current provenance only after the
+        # caller has shown the context warning and the user has confirmed it.
+        return label
     provenance: dict[str, Any] = dict(label.provenance)
     provenance["source_fingerprints"] = _current_source_fingerprints(source)
     calibration_state: dict[str, Any] = dict(label.calibration_state)
@@ -129,7 +135,7 @@ class FrameSessionService:
         self,
         adapter: DatasetAdapter,
         importer: WaymoLabelImporter,
-        repository: LabelRepository | None = None,
+        repository: WorkingLabelRepository | None = None,
     ) -> None:
         self.adapter = adapter
         self.importer = importer
@@ -151,3 +157,93 @@ class FrameSessionService:
         if self.repository is None:
             raise RuntimeError("no working label repository configured")
         return self.repository.save(label)
+
+
+def _compare_v2_label_context(
+    label: FrameLabel,
+    source: SourceFrameData,
+) -> tuple[LabelContextIssue, ...]:
+    if label.revision == 0 or "profile_sha256" not in label.provenance:
+        return ()
+    issues: list[LabelContextIssue] = []
+    provenance = label.provenance
+    checks = (
+        ("profile_sha256", source.metadata.get("profile_sha256"), "profile_changed"),
+        (
+            "frame_index.lidar_binding_sha256",
+            source.metadata.get("lidar_binding_sha256"),
+            "lidar_binding_changed",
+        ),
+        (
+            "frame_index.frame_record_sha256",
+            source.metadata.get("frame_record_sha256"),
+            "frame_record_changed",
+        ),
+        (
+            "dataset_manifest.sha256",
+            source.metadata.get("manifest_sha256"),
+            "manifest_changed",
+        ),
+        (
+            "frame_index.sha256",
+            source.metadata.get("frame_index_sha256"),
+            "frame_index_changed",
+        ),
+        (
+            "taxonomy.sha256",
+            source.metadata.get("taxonomy_sha256"),
+            "taxonomy_changed",
+        ),
+    )
+    for dotted, current, code in checks:
+        expected: object = provenance
+        for part in dotted.split("."):
+            expected = expected.get(part) if isinstance(expected, Mapping) else None
+        if expected != current:
+            issues.append(
+                LabelContextIssue(
+                    code,
+                    f"v2 라벨 기준이 변경되었습니다: {dotted}",
+                )
+            )
+    point_paths = source.point_cloud_paths.get(str(source.metadata.get("label_lidar_id")))
+    if point_paths:
+        try:
+            current_point = sha256_file(point_paths[0])
+        except OSError as exc:
+            issues.append(
+                LabelContextIssue(
+                    "point_fingerprint_unreadable",
+                    f"활성 LiDAR fingerprint를 확인할 수 없습니다: {exc}",
+                )
+            )
+        else:
+            if provenance.get("point_cloud_sha256") != current_point:
+                issues.append(
+                    LabelContextIssue(
+                        "point_cloud_changed",
+                        "활성 LiDAR 파일이 라벨 저장 후 변경되었습니다.",
+                    )
+                )
+    expected_image = provenance.get("image_sha256")
+    image_path = next(iter(source.image_paths.values()), None)
+    image_unreadable = False
+    try:
+        current_image = sha256_file(image_path) if image_path is not None else None
+    except OSError as exc:
+        current_image = None
+        image_unreadable = True
+        issues.append(
+            LabelContextIssue(
+                "image_fingerprint_unreadable",
+                f"연결된 이미지 fingerprint를 확인할 수 없습니다: {exc}",
+            )
+        )
+    if not image_unreadable and expected_image != current_image:
+        issues.append(
+            LabelContextIssue(
+                "image_changed",
+                "연결된 이미지가 변경되었거나 누락되었습니다. LiDAR 라벨은 유지됩니다.",
+            )
+        )
+    return tuple(issues)

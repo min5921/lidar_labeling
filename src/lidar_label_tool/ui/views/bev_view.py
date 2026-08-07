@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, Qt, Signal
 from PySide6.QtGui import QBrush
 
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
@@ -28,7 +28,7 @@ def _brushes(rgba: np.ndarray) -> list[QBrush]:
     cache: dict[tuple[int, int, int, int], QBrush] = {}
     result: list[QBrush] = []
     for row in quantized:
-        key = tuple(int(value) for value in row)
+        key = (int(row[0]), int(row[1]), int(row[2]), int(row[3]))
         brush = cache.get(key)
         if brush is None:
             brush = pg.mkBrush(key)
@@ -54,25 +54,25 @@ class BevView(pg.PlotWidget):
         self.showGrid(x=True, y=True, alpha=0.2)
         self.setLabel("bottom", "x forward", units="m")
         self.setLabel("left", "y left", units="m")
-        self._point_items: list[object] = []
-        self._box_items: list[object] = []
+        self._point_items: list[Any] = []
+        self._box_items: list[Any] = []
         self._first_cloud = True
         self._objects: tuple[LabeledObject, ...] = ()
         self._selected_id: str | None = None
         self.create_mode = False
         self._drag_start_data: tuple[float, float] | None = None
         self._drag_start_pixel: tuple[float, float] | None = None
-        self._create_preview: object | None = None
+        self._create_preview: Any | None = None
         self._move_object: LabeledObject | None = None
         self._move_start_data: tuple[float, float] | None = None
         self._move_start_pixel: tuple[float, float] | None = None
-        self._move_preview: object | None = None
+        self._move_preview: Any | None = None
         self._edit_mode: str | None = None
         self._resize_corner: int | None = None
         self._preview_box: Box3D | None = None
         self.scene().sigMouseClicked.connect(self._mouse_clicked)
 
-    def _clear_items(self, items: list[object]) -> None:
+    def _clear_items(self, items: list[Any]) -> None:
         for item in items:
             self.removeItem(item)
         items.clear()
@@ -320,7 +320,7 @@ class BevView(pg.PlotWidget):
             return
         super().mouseReleaseEvent(event)
 
-    def _event_data_point(self, event: Any) -> object:
+    def _event_data_point(self, event: Any) -> QPointF:
         scene_position = self.mapToScene(event.position().toPoint())
         return self.getViewBox().mapSceneToView(scene_position)
 
@@ -435,7 +435,7 @@ class BevView(pg.PlotWidget):
         _, mode, corner = min(candidates, key=lambda item: item[0])
         return mode, corner
 
-    def _data_to_widget(self, x: float, y: float) -> object:
+    def _data_to_widget(self, x: float, y: float) -> QPoint:
         scene = self.getViewBox().mapViewToScene(QPointF(x, y))
         return self.mapFromScene(scene)
 
@@ -454,7 +454,7 @@ class BevView(pg.PlotWidget):
             box.y + sine * (front_distance + offset),
         )
 
-    def _mouse_clicked(self, event: object) -> None:
+    def _mouse_clicked(self, event: Any) -> None:
         if event.button() != Qt.MouseButton.LeftButton:
             return
         point = self.getViewBox().mapSceneToView(event.scenePos())

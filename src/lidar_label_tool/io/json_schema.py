@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from jsonschema import Draft202012Validator
 
 
 @dataclass(frozen=True, slots=True)

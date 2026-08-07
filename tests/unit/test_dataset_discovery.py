@@ -32,6 +32,7 @@ class DatasetDiscoveryTests(unittest.TestCase):
             self.assertFalse(any(path.startswith("annotations/") for path in paths))
             self.assertFalse(any(path.startswith("exports/") for path in paths))
             self.assertTrue(all("{sample_id}" in item.data_pattern for item in result.lidars))
+            self.assertTrue(result.cameras[0].data_pattern.endswith(".JPG"))
 
     def test_discovery_order_and_suggested_ids_are_deterministic(self) -> None:
         with TemporaryDirectory() as directory:

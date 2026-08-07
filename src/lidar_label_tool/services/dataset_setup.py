@@ -12,6 +12,9 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from lidar_label_tool.domain.dataset_v2 import DatasetManifestV2, SyncMethod
+from lidar_label_tool.domain.point_cloud import PointCloudSpec
+from lidar_label_tool.io.loaders.bin_loader import BinaryPointCloudLoader
+from lidar_label_tool.io.loaders.pcd_loader import PcdPointCloudLoader
 from lidar_label_tool.io.dataset_v2 import (
     canonical_frame_index_bytes,
     parse_dataset_manifest_v2,
@@ -25,6 +28,7 @@ from lidar_label_tool.services.dataset_v2_validation import (
 )
 from lidar_label_tool.services.timestamp_synchronizer import (
     SynchronizationQa,
+    SynchronizationResult,
     make_sensor_samples,
     synchronize_profile,
 )
@@ -104,6 +108,17 @@ class DatasetSetupRequest:
     dataset_id: str | None = None
     default_profile_id: str | None = None
     expected_manifest_sha256: str | None = None
+    expected_source_inventory_sha256: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetSetupAnalysis:
+    source_root: Path
+    config_root: Path
+    dataset_id: str
+    source_inventory_sha256: str
+    sync_qa: tuple[tuple[str, SynchronizationQa], ...]
+    source_file_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +132,47 @@ class DatasetSetupResult:
     source_inventory_sha256: str
 
 
+def analyze_generic_dataset(
+    request: DatasetSetupRequest,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel_check: CancelCheck | None = None,
+) -> DatasetSetupAnalysis:
+    """Validate and synchronize inputs without creating configuration files."""
+    source_root = Path(request.source_root).resolve()
+    config_root = Path(request.config_root).resolve()
+    _validate_request(request, source_root, config_root)
+    _require_initial_configuration_available(request, config_root)
+    _validate_point_candidates(request, source_root)
+    _check_cancel(cancel_check)
+    selected_source_paths = _selected_source_paths(request, source_root, config_root)
+    source_hashes = _hash_paths(
+        selected_source_paths,
+        phase="source_fingerprint",
+        progress=progress,
+        cancel_check=cancel_check,
+    )
+    source_inventory_sha256 = _inventory_hash(source_root, source_hashes)
+    timestamp_tables = _load_timestamp_tables(request, source_root)
+    sync_results = _synchronize_request(
+        request,
+        timestamp_tables,
+        progress=progress,
+        cancel_check=cancel_check,
+    )
+    return DatasetSetupAnalysis(
+        source_root=source_root,
+        config_root=config_root,
+        dataset_id=request.dataset_id or new_dataset_id(),
+        source_inventory_sha256=source_inventory_sha256,
+        sync_qa=tuple(
+            (lidar.profile_id, sync_results[lidar.profile_id].qa)
+            for lidar in request.lidars
+        ),
+        source_file_count=len(selected_source_paths),
+    )
+
+
 def create_generic_dataset(
     request: DatasetSetupRequest,
     *,
@@ -127,23 +183,12 @@ def create_generic_dataset(
     source_root = Path(request.source_root).resolve()
     config_root = Path(request.config_root).resolve()
     _validate_request(request, source_root, config_root)
+    _require_initial_configuration_available(request, config_root)
+    _validate_point_candidates(request, source_root)
     _check_cancel(cancel_check)
 
     config_root.mkdir(parents=True, exist_ok=True)
     manifest_path = config_root / "dataset.json"
-    if manifest_path.exists():
-        actual = _sha256(manifest_path)
-        if request.expected_manifest_sha256 is None:
-            raise DatasetSetupConflictError(
-                "dataset.json already exists; use the explicit reconfiguration workflow"
-            )
-        if actual != request.expected_manifest_sha256:
-            raise DatasetSetupConflictError(
-                "dataset.json changed after setup analysis; rescan before applying"
-            )
-        raise DatasetSetupConflictError(
-            "editing an existing v2 manifest is not part of initial dataset creation"
-        )
 
     selected_source_paths = _selected_source_paths(request, source_root, config_root)
     before_hashes = _hash_paths(
@@ -153,47 +198,20 @@ def create_generic_dataset(
         cancel_check=cancel_check,
     )
     source_inventory_sha256 = _inventory_hash(source_root, before_hashes)
+    if (
+        request.expected_source_inventory_sha256 is not None
+        and request.expected_source_inventory_sha256 != source_inventory_sha256
+    ):
+        raise DatasetSetupConflictError(
+            "source files changed after setup analysis; analyze again before creating"
+        )
     timestamp_tables = _load_timestamp_tables(request, source_root)
-    camera_samples = (
-        make_sensor_samples(
-            request.camera.sensor_id,
-            (
-                (sample.source_sample_id, sample.relative_path)
-                for sample in request.camera.candidate.samples
-            ),
-        )
-        if request.camera is not None
-        else ()
+    sync_results = _synchronize_request(
+        request,
+        timestamp_tables,
+        progress=progress,
+        cancel_check=cancel_check,
     )
-    camera_timestamp = (
-        timestamp_tables.get(("camera", request.camera.sensor_id))
-        if request.camera is not None
-        else None
-    )
-
-    sync_results: dict[str, Any] = {}
-    for position, lidar in enumerate(request.lidars, start=1):
-        _check_cancel(cancel_check)
-        if progress is not None:
-            progress("synchronize", position, len(request.lidars), lidar.display_name)
-        lidar_samples = make_sensor_samples(
-            lidar.sensor_id,
-            (
-                (sample.source_sample_id, sample.relative_path)
-                for sample in lidar.candidate.samples
-            ),
-        )
-        sync_results[lidar.profile_id] = synchronize_profile(
-            profile_id=lidar.profile_id,
-            lidar_samples=lidar_samples,
-            method=lidar.sync_method,
-            camera_samples=camera_samples if lidar.sync_method != "lidar_only" else (),
-            lidar_timestamps=timestamp_tables.get(("lidar", lidar.sensor_id)),
-            camera_timestamps=(
-                camera_timestamp if lidar.sync_method == "timestamp_nearest" else None
-            ),
-            tolerance_ns=lidar.tolerance_ns,
-        )
 
     token = uuid4().hex
     generation_name = "generation-000001"
@@ -203,6 +221,7 @@ def create_generic_dataset(
     manifest_temporary = config_root / f".dataset.json.{token}.tmp"
     generation_activated = False
     manifest_committed = False
+    committed_manifest_bytes: bytes | None = None
     try:
         if generation_path.exists():
             raise DatasetSetupConflictError(
@@ -260,6 +279,7 @@ def create_generic_dataset(
             )
         _write_json_fsynced(manifest_temporary, document)
         parse_dataset_manifest_v2(json.loads(manifest_temporary.read_text(encoding="utf-8")))
+        committed_manifest_bytes = manifest_temporary.read_bytes()
         _check_cancel(cancel_check)
         os.replace(manifest_temporary, manifest_path)
         manifest_committed = True
@@ -278,6 +298,11 @@ def create_generic_dataset(
             source_inventory_sha256=source_inventory_sha256,
         )
     except Exception:
+        if manifest_committed and committed_manifest_bytes is not None:
+            manifest_committed = not _remove_owned_manifest(
+                manifest_path,
+                committed_manifest_bytes,
+            )
         if not manifest_committed and generation_activated:
             _remove_owned_generation(generation_path, generations_root, generation_name)
         raise
@@ -398,6 +423,76 @@ def _validate_request(
         raise DatasetSetupError(f"config root is not a directory: {config_root}")
 
 
+def _require_initial_configuration_available(
+    request: DatasetSetupRequest,
+    config_root: Path,
+) -> None:
+    manifest_path = config_root / "dataset.json"
+    if not manifest_path.exists():
+        return
+    actual = _sha256(manifest_path)
+    if request.expected_manifest_sha256 is None:
+        raise DatasetSetupConflictError(
+            "dataset.json already exists; use the explicit reconfiguration workflow"
+        )
+    if actual != request.expected_manifest_sha256:
+        raise DatasetSetupConflictError(
+            "dataset.json changed after setup analysis; rescan before applying"
+        )
+    raise DatasetSetupConflictError(
+        "editing an existing v2 manifest is not part of initial dataset creation"
+    )
+
+
+def _synchronize_request(
+    request: DatasetSetupRequest,
+    timestamp_tables: Mapping[tuple[str, str], TimestampTable],
+    *,
+    progress: ProgressCallback | None,
+    cancel_check: CancelCheck | None,
+) -> dict[str, SynchronizationResult]:
+    camera_samples = (
+        make_sensor_samples(
+            request.camera.sensor_id,
+            (
+                (sample.source_sample_id, sample.relative_path)
+                for sample in request.camera.candidate.samples
+            ),
+        )
+        if request.camera is not None
+        else ()
+    )
+    camera_timestamp = (
+        timestamp_tables.get(("camera", request.camera.sensor_id))
+        if request.camera is not None
+        else None
+    )
+    results: dict[str, SynchronizationResult] = {}
+    for position, lidar in enumerate(request.lidars, start=1):
+        _check_cancel(cancel_check)
+        if progress is not None:
+            progress("synchronize", position, len(request.lidars), lidar.display_name)
+        lidar_samples = make_sensor_samples(
+            lidar.sensor_id,
+            (
+                (sample.source_sample_id, sample.relative_path)
+                for sample in lidar.candidate.samples
+            ),
+        )
+        results[lidar.profile_id] = synchronize_profile(
+            profile_id=lidar.profile_id,
+            lidar_samples=lidar_samples,
+            method=lidar.sync_method,
+            camera_samples=camera_samples if lidar.sync_method != "lidar_only" else (),
+            lidar_timestamps=timestamp_tables.get(("lidar", lidar.sensor_id)),
+            camera_timestamps=(
+                camera_timestamp if lidar.sync_method == "timestamp_nearest" else None
+            ),
+            tolerance_ns=lidar.tolerance_ns,
+        )
+    return results
+
+
 def _selected_source_paths(
     request: DatasetSetupRequest,
     source_root: Path,
@@ -418,6 +513,42 @@ def _selected_source_paths(
     if missing:
         raise DatasetSetupError(f"selected source file is missing: {missing[0]}")
     return tuple(sorted(paths, key=lambda path: str(path).encode("utf-8")))
+
+
+def _validate_point_candidates(
+    request: DatasetSetupRequest,
+    source_root: Path,
+) -> None:
+    bin_loader = BinaryPointCloudLoader()
+    pcd_loader = PcdPointCloudLoader()
+    for lidar in request.lidars:
+        spec = PointCloudSpec(
+            columns=lidar.point_columns,
+            source_frame=lidar.coordinate_frame,
+            dtype=lidar.point_dtype,
+            byte_order=lidar.byte_order,
+        )
+        sample_count = len(lidar.candidate.samples)
+        representative_indices = sorted({0, sample_count // 2, sample_count - 1})
+        loader = pcd_loader if lidar.candidate.format == "pcd" else bin_loader
+        for index in representative_indices:
+            sample = lidar.candidate.samples[index]
+            path = _safe_under(source_root, sample.relative_path)
+            try:
+                cloud = loader.load(
+                    path,
+                    spec,
+                    sensor_id=lidar.sensor_id,
+                    return_id="1",
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                raise DatasetSetupError(
+                    f"cannot load representative LiDAR sample {path}: {exc}"
+                ) from exc
+            if cloud.point_count == 0:
+                raise DatasetSetupError(
+                    f"representative LiDAR sample has no usable XYZ points: {path}"
+                )
 
 
 def _sample_paths(root: Path, candidate: SensorCandidate) -> tuple[Path, ...]:
@@ -675,6 +806,27 @@ def _machine_id_from_display(value: str, prefix: str, used: set[str]) -> str:
 def _require_machine_id(value: str, name: str) -> None:
     if not _MACHINE_ID.fullmatch(value):
         raise DatasetSetupError(f"{name} is not a safe machine ID: {value!r}")
+
+
+def _remove_owned_manifest(path: Path, expected_payload: bytes) -> bool:
+    """Remove only the manifest bytes created by this setup transaction."""
+    if path.name != "dataset.json":
+        raise RuntimeError(f"refusing to remove unexpected manifest path: {path}")
+    try:
+        current = path.read_bytes()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    if current != expected_payload:
+        return False
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 def _remove_owned_generation(path: Path, parent: Path, expected_name: str) -> None:

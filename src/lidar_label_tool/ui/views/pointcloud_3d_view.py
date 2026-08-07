@@ -106,12 +106,18 @@ class PointCloud3DView(gl.GLViewWidget):
             selected = obj.id == selected_id
             if selected and show_labels:
                 self._selected_tag_object = obj
+            color: tuple[float, float, float, float]
             if selected:
                 color = _SELECTED_COLOR
                 width = max(line_width * 2.5, line_width + 2.0)
             else:
                 rgb = class_color(obj.class_name)
-                color = tuple(channel / 255.0 for channel in rgb) + (0.78,)
+                color = (
+                    rgb[0] / 255.0,
+                    rgb[1] / 255.0,
+                    rgb[2] / 255.0,
+                    0.78,
+                )
                 width = line_width
             line = gl.GLLinePlotItem(pos=positions, color=color, width=width, mode="lines")
             self.addItem(line)

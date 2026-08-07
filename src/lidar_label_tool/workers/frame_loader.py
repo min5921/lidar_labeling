@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from lidar_label_tool.domain.labels import FrameLabel
 from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.io.dataset import DatasetAdapter, SourceFrameData
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.repository_factory import WorkingLabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.frame_session import FrameSessionService
 from lidar_label_tool.services.frame_session import LabelContextIssue
@@ -32,7 +32,7 @@ def load_frame_payload(
     adapter: DatasetAdapter,
     importer: WaymoLabelImporter,
     frame_id: str,
-    repository: LabelRepository | None = None,
+    repository: WorkingLabelRepository | None = None,
 ) -> FrameLoadPayload:
     opened = FrameSessionService(adapter, importer, repository).open_frame(frame_id)
     clouds: dict[str, tuple[PointCloudData, ...]] = {}

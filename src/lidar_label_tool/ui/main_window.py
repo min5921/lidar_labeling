@@ -44,9 +44,11 @@ from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.geometry.box_fit import fit_box_bottom_to_points
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
+from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.adapters.frame_centric_waymo import WaymoFrameCentricAdapter
-from lidar_label_tool.io.labels.json_repository import LabelConflictError, LabelRepository
+from lidar_label_tool.io.labels.json_repository import LabelConflictError
+from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
 from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
@@ -54,8 +56,9 @@ from lidar_label_tool.services.frame_session import (
     compare_label_context,
     refresh_label_context,
 )
-from lidar_label_tool.services.recovery import RecoveryStore
+from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.session_lock import SessionLock
+from lidar_label_tool.services.session_lock_v2 import V2SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
 from lidar_label_tool.ui.render_cache import PointCloudRenderCache
 from lidar_label_tool.ui.views import (
@@ -79,29 +82,45 @@ class MainWindow(QMainWindow):
         dataset_root: Path,
         config_path: Path,
         workspace_root: Path | None = None,
-        session_lock: SessionLock | None = None,
+        session_lock: SessionLock | V2SessionLock | None = None,
+        profile_id: str | None = None,
     ) -> None:
         super().__init__()
         self.dataset_root = Path(dataset_root)
         self.config = load_config(config_path)
-        self.adapter = open_dataset_adapter(self.dataset_root)
+        self.adapter = open_dataset_adapter(self.dataset_root, profile_id=profile_id)
         self.index = self.adapter.scan()
+        if isinstance(self.adapter, DeviceCentricV2Adapter):
+            self.config = dict(self.config)
+            self.config["classes"] = [
+                {
+                    "name": item.id,
+                    "display_name": item.display_name,
+                    "color": item.color,
+                    "default_size": [item.length, item.width, item.height],
+                    "shortcut": item.shortcut,
+                }
+                for item in self.adapter.taxonomy.classes
+            ]
         self.importer = WaymoLabelImporter(
             self.config["source_class_mappings"],
             source_format=(
-                "device_centric_json"
-                if isinstance(self.adapter, DeviceCentricAdapter)
-                else "waymo_frame_json"
+                "device_centric_v2"
+                if isinstance(self.adapter, DeviceCentricV2Adapter)
+                else (
+                    "device_centric_json"
+                    if isinstance(self.adapter, DeviceCentricAdapter)
+                    else "waymo_frame_json"
+                )
             ),
         )
-        self.repository = (
-            LabelRepository.for_workspace(workspace_root, self.index.dataset_id)
-            if workspace_root is not None
-            else LabelRepository.for_sidecar(self.dataset_root, self.index.dataset_id)
+        self.repository = open_label_repository(
+            self.adapter,
+            workspace_root=workspace_root,
         )
         self.workspace_root = workspace_root
         self.session_lock = session_lock
-        self.recovery_store = RecoveryStore(self.repository.annotation_dir)
+        self.recovery_store = open_recovery_store(self.repository)
         self._ignored_recovery_frames: set[str] = set()
         self._warned_context_frames: set[str] = set()
         self.camera_calibrations: dict[str, CameraCalibration] = {}
@@ -112,7 +131,7 @@ class MainWindow(QMainWindow):
                 except (KeyError, TypeError, ValueError):
                     continue
                 self.camera_calibrations[calibration.camera_id] = calibration
-        elif isinstance(self.adapter, DeviceCentricAdapter):
+        elif isinstance(self.adapter, (DeviceCentricAdapter, DeviceCentricV2Adapter)):
             for camera_id, data in self.adapter.camera_calibrations.items():
                 try:
                     calibration = CameraCalibration.from_generic(camera_id, data)
@@ -533,9 +552,11 @@ class MainWindow(QMainWindow):
             frame_id,
             self.repository,
         )
-        future.add_done_callback(
-            lambda completed, req=request, fid=frame_id: self._finish_future(req, fid, completed)
-        )
+
+        def finish(completed: Future[FrameLoadPayload]) -> None:
+            self._finish_future(request, frame_id, completed)
+
+        future.add_done_callback(finish)
 
     def _finish_future(
         self, request: int, frame_id: str, future: Future[FrameLoadPayload]

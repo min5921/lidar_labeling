@@ -11,11 +11,16 @@ from uuid import uuid4
 from PIL import Image, UnidentifiedImageError
 
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
+from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
-from lidar_label_tool.io.labels.json_repository import LabelRepository
+from lidar_label_tool.io.labels.repository_factory import (
+    WorkingLabelRepository,
+    open_label_repository,
+)
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
-from lidar_label_tool.services.recovery import RecoveryStore
+from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.frame_session import compare_label_context
+from lidar_label_tool.services.dataset_v2_validation import validate_dataset_v2
 
 
 Severity = Literal["info", "warning", "error"]
@@ -191,11 +196,11 @@ def _sha256(path: Path) -> str:
 
 
 def _source_format(adapter: object) -> str:
-    return (
-        "device_centric_json"
-        if isinstance(adapter, DeviceCentricAdapter)
-        else "waymo_frame_json"
-    )
+    if isinstance(adapter, DeviceCentricV2Adapter):
+        return "device_centric_v2"
+    if isinstance(adapter, DeviceCentricAdapter):
+        return "device_centric_json"
+    return "waymo_frame_json"
 
 
 def validate_dataset(
@@ -204,6 +209,7 @@ def validate_dataset(
     class_mapping: Mapping[str, str] | None = None,
     workspace_root: Path | None = None,
     verify_images: bool = True,
+    profile_id: str | None = None,
 ) -> PreflightReport:
     """Read-only validation of dataset files, labels, calibration and work state."""
     root = Path(dataset_root).resolve()
@@ -220,7 +226,7 @@ def validate_dataset(
             ),
         )
     try:
-        adapter = open_dataset_adapter(root)
+        adapter = open_dataset_adapter(root, profile_id=profile_id)
         index = adapter.scan()
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         return _empty_report(
@@ -234,6 +240,19 @@ def validate_dataset(
         )
 
     issues: list[PreflightIssue] = []
+    if isinstance(adapter, DeviceCentricV2Adapter):
+        v2_report = validate_dataset_v2(root, verify_images=False)
+        issues.extend(
+            PreflightIssue(
+                issue.severity,
+                issue.code,
+                issue.message,
+                frame_id=issue.frame_id,
+                sensor_id=None,
+                path=issue.path,
+            )
+            for issue in v2_report.issues
+        )
     if index.frame_count <= 0:
         issues.append(PreflightIssue("error", "no_frames", "동기화된 프레임이 없습니다."))
     if not index.lidar_ids:
@@ -257,13 +276,9 @@ def validate_dataset(
     usable_frame_count = 0
     first_source: Any = None
 
-    repository: LabelRepository | None
+    repository: WorkingLabelRepository | None
     try:
-        repository = (
-            LabelRepository.for_workspace(workspace_root, index.dataset_id)
-            if workspace_root is not None
-            else LabelRepository.for_sidecar(root, index.dataset_id)
-        )
+        repository = open_label_repository(adapter, workspace_root=workspace_root)
     except ValueError as exc:
         repository = None
         issues.append(
@@ -318,7 +333,7 @@ def validate_dataset(
                 )
                 continue
             sensor_has_valid_file = False
-            for path in paths:
+            for return_number, path in enumerate(paths, start=1):
                 suffix = path.suffix.lower()
                 if suffix not in _SUPPORTED_POINT_EXTENSIONS:
                     issues.append(
@@ -363,6 +378,25 @@ def validate_dataset(
                             "error",
                             "invalid_bin_stride",
                             f"BIN 크기 {size}가 stride {sensor_spec.point_stride_bytes}의 배수가 아닙니다.",
+                            frame_id=frame_id,
+                            sensor_id=sensor_id,
+                            path=path,
+                        )
+                    )
+                    continue
+                try:
+                    adapter.load_cloud_from_source(
+                        source,
+                        sensor_id,
+                        str(return_number),
+                    )
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    issues.append(
+                        PreflightIssue(
+                            "error",
+                            "point_payload_invalid",
+                            f"포인트 payload를 읽을 수 없습니다: "
+                            f"{type(exc).__name__}: {exc}",
                             frame_id=frame_id,
                             sensor_id=sensor_id,
                             path=path,
@@ -539,7 +573,7 @@ def validate_dataset(
 
     recovery_snapshot_count = 0
     if repository is not None:
-        recovery_store = RecoveryStore(repository.annotation_dir)
+        recovery_store = open_recovery_store(repository)
         if recovery_store.recovery_dir.is_dir():
             for path in recovery_store.recovery_dir.glob("*.recovery.json"):
                 recovery_snapshot_count += 1
@@ -620,7 +654,7 @@ class DatasetPreflight:
         write_text = "사용 가능" if self.working_directory_writable else "사용 불가"
         calibration_text = (
             "LiDAR 재적용 불필요"
-            if self.source_frame == "vehicle"
+            if self.adapter_name == "device_centric_v2" or self.source_frame == "vehicle"
             else "LiDAR calibration 확인 필요"
         )
         lines = [
@@ -682,16 +716,13 @@ def inspect_dataset(
     *,
     workspace_root: Path | None = None,
     probe_write: bool = True,
+    profile_id: str | None = None,
 ) -> DatasetPreflight:
     root = Path(dataset_root).resolve()
-    adapter = open_dataset_adapter(root)
+    adapter = open_dataset_adapter(root, profile_id=profile_id)
     index = adapter.scan()
     source = adapter.load_source_frame(index.frame_ids[0])
-    repository = (
-        LabelRepository.for_workspace(workspace_root, index.dataset_id)
-        if workspace_root is not None
-        else LabelRepository.for_sidecar(root, index.dataset_id)
-    )
+    repository = open_label_repository(adapter, workspace_root=workspace_root)
     writable, write_error = (
         probe_writable_directory(repository.annotation_dir)
         if probe_write

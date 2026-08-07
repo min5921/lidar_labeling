@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 import pyqtgraph as pg
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, Qt, Signal
 
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
@@ -16,6 +16,7 @@ from lidar_label_tool.ui.views.bev_view import _brushes
 
 
 _SELECTED = (255, 230, 15, 255)
+EditMode = Literal["move", "top", "bottom"]
 
 
 class SideView(pg.PlotWidget):
@@ -31,19 +32,19 @@ class SideView(pg.PlotWidget):
         self.showGrid(x=True, y=True, alpha=0.2)
         self.setLabel("bottom", "x forward", units="m")
         self.setLabel("left", "z up", units="m")
-        self._point_items: list[object] = []
-        self._box_items: list[object] = []
+        self._point_items: list[Any] = []
+        self._box_items: list[Any] = []
         self._first_cloud = True
         self._objects: tuple[LabeledObject, ...] = ()
         self._selected_id: str | None = None
         self._edit_object: LabeledObject | None = None
-        self._edit_mode: str | None = None
+        self._edit_mode: EditMode | None = None
         self._edit_start_data: tuple[float, float] | None = None
         self._edit_start_pixel: tuple[float, float] | None = None
-        self._preview_item: object | None = None
+        self._preview_item: Any | None = None
         self._preview_box: Box3D | None = None
 
-    def _clear_items(self, items: list[object]) -> None:
+    def _clear_items(self, items: list[Any]) -> None:
         for item in items:
             self.removeItem(item)
         items.clear()
@@ -213,15 +214,15 @@ class SideView(pg.PlotWidget):
     def _selected_object(self) -> LabeledObject | None:
         return next((obj for obj in self._objects if obj.id == self._selected_id), None)
 
-    def _event_data_point(self, event: Any) -> object:
+    def _event_data_point(self, event: Any) -> QPointF:
         scene_position = self.mapToScene(event.position().toPoint())
         return self.getViewBox().mapSceneToView(scene_position)
 
     def _hit_selected_handle(
         self, box: Box3D, pixel_x: float, pixel_y: float
-    ) -> str | None:
+    ) -> EditMode | None:
         axis_value = box.x if self.plane == "xz" else box.y
-        candidates: list[tuple[float, str]] = []
+        candidates: list[tuple[float, EditMode]] = []
         center = self._data_to_widget(axis_value, box.z)
         center_distance = math.hypot(pixel_x - center.x(), pixel_y - center.y())
         if center_distance <= 8.0:
@@ -236,7 +237,7 @@ class SideView(pg.PlotWidget):
             candidates.append((bottom_distance, "bottom"))
         return min(candidates, key=lambda item: item[0])[1] if candidates else None
 
-    def _data_to_widget(self, x: float, z: float) -> object:
+    def _data_to_widget(self, x: float, z: float) -> QPoint:
         scene = self.getViewBox().mapViewToScene(QPointF(x, z))
         return self.mapFromScene(scene)
 

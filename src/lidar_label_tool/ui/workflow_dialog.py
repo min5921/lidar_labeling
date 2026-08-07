@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 import traceback
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from PySide6.QtCore import QObject, QSettings, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from lidar_label_tool import __version__
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.app.runtime_paths import user_settings_path
-from lidar_label_tool.services.dataset_preflight import validate_dataset
+from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
 from lidar_label_tool.services.label_export import export_dataset_labels
 from lidar_label_tool.services.label_statistics import collect_label_statistics
 from lidar_label_tool.services.one_chip_conversion import (
@@ -46,6 +46,10 @@ from lidar_label_tool.services.one_chip_conversion import (
 from lidar_label_tool.services.one_chip_calibration_verification import (
     verify_calibration,
 )
+from lidar_label_tool.ui.dataset_resync_dialog import DatasetResyncV2Dialog
+
+
+_TaskResult = TypeVar("_TaskResult")
 
 
 class _ConversionWorker(QObject):
@@ -114,17 +118,17 @@ class _BusyTaskDialog(QDialog):
         layout.addWidget(self.status)
         layout.addWidget(self.progress)
 
-        self.thread = QThread(self)
+        self._task_thread = QThread(self)
         self.worker = _CallableWorker(task)
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
+        self.worker.moveToThread(self._task_thread)
+        self._task_thread.started.connect(self.worker.run)
         self.worker.succeeded.connect(self._succeeded)
         self.worker.failed.connect(self._failed)
-        self.worker.succeeded.connect(self.thread.quit)
-        self.worker.failed.connect(self.thread.quit)
-        self.thread.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self._thread_finished)
-        QTimer.singleShot(0, self.thread.start)
+        self.worker.succeeded.connect(self._task_thread.quit)
+        self.worker.failed.connect(self._task_thread.quit)
+        self._task_thread.finished.connect(self.worker.deleteLater)
+        self._task_thread.finished.connect(self._thread_finished)
+        QTimer.singleShot(0, self._task_thread.start)
 
     @Slot(object)
     def _succeeded(self, result: object) -> None:
@@ -145,14 +149,16 @@ class _BusyTaskDialog(QDialog):
             QDialog.reject(self)
 
     def reject(self) -> None:
-        if self.thread.isRunning():
+        if self._task_thread.isRunning():
             return
         super().reject()
 
 
 def _run_task(
-    parent: QWidget, title: str, task: Callable[[], object]
-) -> object | None:
+    parent: QWidget,
+    title: str,
+    task: Callable[[], _TaskResult],
+) -> _TaskResult | None:
     dialog = _BusyTaskDialog(parent, title, task)
     dialog.exec()
     if dialog.error_summary:
@@ -160,7 +166,7 @@ def _run_task(
         message.setDetailedText(dialog.error_details or "")
         message.exec()
         return None
-    return dialog.result_value
+    return cast(_TaskResult, dialog.result_value)
 
 
 class _PathRow(QWidget):
@@ -181,9 +187,9 @@ class _PathRow(QWidget):
 
 class OneChipConversionDialog(QDialog):
     MODE_TITLES = {
-        "convert": "원본 데이터 변환",
-        "resync": "기존 데이터 재동기화",
-        "calibration": "Calibration JSON 생성",
+        "convert": "one_chip MCAP/ROS bag 변환",
+        "resync": "one_chip 기존 결과 재동기화",
+        "calibration": "one_chip Calibration JSON 생성",
     }
 
     def __init__(self, parent: QWidget, mode: str) -> None:
@@ -283,7 +289,9 @@ class OneChipConversionDialog(QDialog):
         self.timestamp_source.setCurrentText(
             str(self.settings.value("one_chip/timestamp_source", "header_aligned"))
         )
-        self.tolerance.setValue(float(self.settings.value("one_chip/tolerance_ms", 70.0)))
+        self.tolerance.setValue(
+            float(str(self.settings.value("one_chip/tolerance_ms", 70.0)))
+        )
 
     def _save_settings(self) -> None:
         self.settings.setValue("one_chip/source", self.source_row.edit.text().strip())
@@ -405,7 +413,11 @@ class OneChipConversionDialog(QDialog):
         self.log.appendPlainText(f"[{update.stage}] {update.message}")
 
     @Slot(object, object)
-    def _on_success(self, result: OneChipOperationResult, preflight: object) -> None:
+    def _on_success(
+        self,
+        result: OneChipOperationResult,
+        preflight: PreflightReport | None,
+    ) -> None:
         self.operation_result = result
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
@@ -556,7 +568,7 @@ class LabelExportDialog(QDialog):
 class CalibrationVerificationDialog(QDialog):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Calibration 검증")
+        self.setWindowTitle("one_chip Calibration 검증")
         self.resize(650, 260)
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -654,11 +666,16 @@ class WorkflowDialog(QDialog):
 
         grid = QGridLayout()
         actions = (
-            ("데이터셋 열기", self._open_dataset, QStyle.StandardPixmap.SP_DialogOpenButton),
-            ("원본 데이터 변환", lambda: self._conversion("convert"), QStyle.StandardPixmap.SP_ArrowForward),
-            ("기존 데이터 재동기화", lambda: self._conversion("resync"), QStyle.StandardPixmap.SP_BrowserReload),
-            ("Calibration JSON 생성", lambda: self._conversion("calibration"), QStyle.StandardPixmap.SP_FileDialogNewFolder),
-            ("Calibration 검증", self._verify_calibration, QStyle.StandardPixmap.SP_DialogApplyButton),
+            (
+                "데이터 폴더/데이터셋 열기",
+                self._open_dataset,
+                QStyle.StandardPixmap.SP_DialogOpenButton,
+            ),
+            (
+                "범용 v2 재동기화",
+                self._resync_v2,
+                QStyle.StandardPixmap.SP_BrowserReload,
+            ),
             ("데이터셋 검사", self._preflight, QStyle.StandardPixmap.SP_DialogApplyButton),
             ("라벨 통계", self._statistics, QStyle.StandardPixmap.SP_FileDialogInfoView),
             ("라벨 내보내기", self._export, QStyle.StandardPixmap.SP_DialogSaveButton),
@@ -671,6 +688,39 @@ class WorkflowDialog(QDialog):
             button.clicked.connect(handler)
             grid.addWidget(button, index // 2, index % 2)
         layout.addLayout(grid)
+
+        legacy_group = QGroupBox("고급 도구 — one_chip 레거시 전용")
+        legacy_group.setCheckable(True)
+        legacy_group.setChecked(False)
+        legacy_layout = QGridLayout(legacy_group)
+        legacy_actions = (
+            (
+                "one_chip MCAP/ROS bag 변환",
+                lambda: self._conversion("convert"),
+                QStyle.StandardPixmap.SP_ArrowForward,
+            ),
+            (
+                "one_chip 기존 결과 재동기화",
+                lambda: self._conversion("resync"),
+                QStyle.StandardPixmap.SP_BrowserReload,
+            ),
+            (
+                "one_chip Calibration JSON 생성",
+                lambda: self._conversion("calibration"),
+                QStyle.StandardPixmap.SP_FileDialogNewFolder,
+            ),
+            (
+                "one_chip Calibration 검증",
+                self._verify_calibration,
+                QStyle.StandardPixmap.SP_DialogApplyButton,
+            ),
+        )
+        for index, (text, handler, icon) in enumerate(legacy_actions):
+            button = QPushButton(text)
+            button.setIcon(self.style().standardIcon(icon))
+            button.clicked.connect(handler)
+            legacy_layout.addWidget(button, index // 2, index % 2)
+        layout.addWidget(legacy_group)
         layout.addStretch(1)
         close_button = QPushButton("닫기")
         close_button.clicked.connect(self.reject)
@@ -681,8 +731,25 @@ class WorkflowDialog(QDialog):
         return Path(selected) if selected else None
 
     def _open_dataset(self) -> None:
-        selected = self._choose_dataset("LiDAR 데이터셋 폴더 선택")
+        selected = self._choose_dataset("원본 데이터 폴더 또는 구성된 데이터셋 선택")
         if selected is not None:
+            self.selected_dataset = selected
+            self.accept()
+
+    def _resync_v2(self) -> None:
+        selected = self._choose_dataset("재동기화할 범용 v2 구성 폴더 선택")
+        if selected is None:
+            return
+        try:
+            dialog = DatasetResyncV2Dialog(selected, self)
+        except (OSError, ValueError, KeyError) as exc:
+            QMessageBox.critical(
+                self,
+                "범용 v2 데이터셋이 아님",
+                f"{selected}\n\n{type(exc).__name__}: {exc}",
+            )
+            return
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.selected_dataset = selected
             self.accept()
 

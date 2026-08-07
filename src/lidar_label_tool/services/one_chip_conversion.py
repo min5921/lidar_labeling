@@ -203,7 +203,7 @@ class DecodedPointCloud2:
     header: DecodedHeader
     height: int
     width: int
-    fields: tuple[dict[str, int], ...]
+    fields: tuple[dict[str, int | str], ...]
     is_bigendian: bool
     point_step: int
     row_step: int
@@ -391,7 +391,7 @@ def decode_point_cloud2(data: bytes) -> DecodedPointCloud2:
     height = reader.uint32()
     width = reader.uint32()
     field_count = reader.uint32()
-    fields: list[dict[str, int]] = []
+    fields: list[dict[str, int | str]] = []
     for _ in range(field_count):
         name = reader.string()
         fields.append(
@@ -481,8 +481,9 @@ def point_cloud_to_matrix(cloud: DecodedPointCloud2) -> np.ndarray:
         raise ValueError("PointCloud2 data is shorter than declared point count")
     structured = np.frombuffer(raw, dtype=structured_dtype, count=point_count)
     matrix = np.zeros((point_count, len(POINT_COLUMNS)), dtype="<f4")
+    dtype_names = structured.dtype.names or ()
     for index, column in enumerate(POINT_COLUMNS):
-        if column in structured.dtype.names:
+        if column in dtype_names:
             matrix[:, index] = structured[column].astype(np.float32, copy=False)
     return matrix
 

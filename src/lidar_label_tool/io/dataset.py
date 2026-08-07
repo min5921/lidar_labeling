@@ -30,6 +30,8 @@ class DatasetIndex:
     camera_ids: tuple[str, ...]
     reference_frame: str
     point_spec: PointCloudSpec
+    profile_id: str | None = None
+    configuration_root: Path | None = None
 
     @property
     def frame_count(self) -> int:

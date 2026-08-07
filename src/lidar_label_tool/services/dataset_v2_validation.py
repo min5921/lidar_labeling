@@ -4,7 +4,10 @@ from collections import Counter
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Mapping
+
+import numpy as np
+from PIL import Image, UnidentifiedImageError
 
 from lidar_label_tool.domain.dataset_v2 import (
     DatasetManifestV2,
@@ -22,6 +25,14 @@ from lidar_label_tool.io.dataset_v2 import (
 from lidar_label_tool.io.json_schema import (
     JsonDocumentError,
     JsonSchemaValidationError,
+    read_json_document,
+    validate_json_document,
+)
+from lidar_label_tool.geometry.transforms import validate_rigid_transform
+from lidar_label_tool.services.timestamp_table import (
+    TimestampTable,
+    TimestampTableError,
+    read_timestamp_table,
 )
 
 
@@ -131,6 +142,7 @@ def validate_dataset_v2(
     config_root: Path,
     *,
     schema_root: Path | None = None,
+    verify_images: bool = True,
 ) -> DatasetV2ValidationReport:
     """Validate one v2 configuration root without modifying source or config files."""
     root = Path(config_root).resolve()
@@ -151,7 +163,12 @@ def validate_dataset_v2(
             frame_indexes=(),
             issues=(issue,),
         )
-    return _DatasetV2Validator(root, manifest, schema_root).run()
+    return _DatasetV2Validator(
+        root,
+        manifest,
+        schema_root,
+        verify_images=verify_images,
+    ).run()
 
 
 def validate_dataset_manifest_v2(
@@ -159,12 +176,14 @@ def validate_dataset_manifest_v2(
     manifest: DatasetManifestV2,
     *,
     schema_root: Path | None = None,
+    verify_images: bool = True,
 ) -> DatasetV2ValidationReport:
     """Validate an uncommitted manifest against files under a configuration root."""
     return _DatasetV2Validator(
         Path(config_root).resolve(),
         manifest,
         schema_root,
+        verify_images=verify_images,
     ).run()
 
 
@@ -174,13 +193,18 @@ class _DatasetV2Validator:
         config_root: Path,
         manifest: DatasetManifestV2,
         schema_root: Path | None,
+        *,
+        verify_images: bool,
     ) -> None:
         self.config_root = config_root
         self.manifest = manifest
         self.schema_root = schema_root
+        self.verify_images = verify_images
         self.data_root: Path | None = None
         self.taxonomy: TaxonomyV2 | None = None
         self.frame_indexes: list[ProfileFrameIndexV2] = []
+        self.timestamp_tables: dict[str, TimestampTable] = {}
+        self.calibration_image_sizes: dict[str, tuple[int, int]] = {}
         self.issues: list[DatasetV2ValidationIssue] = []
 
     def run(self) -> DatasetV2ValidationReport:
@@ -293,19 +317,57 @@ class _DatasetV2Validator:
                     )
 
     def _validate_timestamp_sources(self) -> None:
-        timestamps = [sensor.timestamp for sensor in self.manifest.lidars]
+        timestamps = [
+            (sensor.id, sensor.timestamp) for sensor in self.manifest.lidars
+        ]
         if self.manifest.camera is not None:
-            timestamps.append(self.manifest.camera.timestamp)
-        for timestamp in timestamps:
+            timestamps.append(
+                (self.manifest.camera.id, self.manifest.camera.timestamp)
+            )
+        for sensor_id, timestamp in timestamps:
             if timestamp is None:
                 continue
             path = self._resolve_data_path(timestamp.path)
-            self._validate_hashed_file(
+            if not self._validate_hashed_file(
                 path,
                 timestamp.sha256,
                 missing_code="timestamp_file_missing",
                 hash_code="timestamp_hash_mismatch",
-            )
+            ):
+                continue
+            assert path is not None
+            try:
+                table = read_timestamp_table(
+                    path,
+                    sample_id_column=timestamp.sample_id_column,
+                    value_column=timestamp.value_column,
+                    unit=timestamp.unit,  # type: ignore[arg-type]
+                    clock_domain=timestamp.clock_domain,
+                    offset_ns=timestamp.offset_ns,
+                )
+            except TimestampTableError as exc:
+                self._add(
+                    exc.code,
+                    str(exc),
+                    path=path,
+                )
+                continue
+            self.timestamp_tables[sensor_id] = table
+            if table.reordered_row_count:
+                self._add(
+                    "timestamp_rows_reordered",
+                    f"{sensor_id} CSV has {table.reordered_row_count} non-monotonic rows; "
+                    "the frozen index uses deterministic sorting",
+                    severity="warning",
+                    path=path,
+                )
+            if table.duplicate_timestamp_count:
+                self._add(
+                    "timestamp_values_duplicate",
+                    f"{sensor_id} CSV has {table.duplicate_timestamp_count} duplicate timestamps",
+                    severity="warning",
+                    path=path,
+                )
 
     def _load_and_validate_taxonomy(self) -> None:
         reference = self.manifest.taxonomy
@@ -361,22 +423,100 @@ class _DatasetV2Validator:
                         path=path,
                     )
 
+    def _validate_calibration(
+        self,
+        profile: DatasetProfileV2,
+        lidar: LidarSensorV2 | None,
+    ) -> None:
+        assert profile.camera is not None
+        path = self._resolve_config_path(
+            profile.camera.calibration_path or "",
+            severity="warning",
+            profile_id=profile.id,
+        )
+        if not self._validate_hashed_file(
+            path,
+            profile.camera.calibration_sha256 or "",
+            missing_code="calibration_missing",
+            hash_code="calibration_hash_mismatch",
+            severity="warning",
+            profile_id=profile.id,
+        ):
+            return
+        assert path is not None
+        try:
+            document = read_json_document(path)
+            validate_json_document(
+                document,
+                "calibration.schema.json",
+                resource_root=self.schema_root,
+            )
+        except (JsonDocumentError, JsonSchemaValidationError, FileNotFoundError) as exc:
+            self._add(
+                "calibration_invalid",
+                str(exc),
+                severity="warning",
+                path=path,
+                profile_id=profile.id,
+            )
+            return
+        if not isinstance(document, Mapping):
+            self._add(
+                "calibration_invalid",
+                "calibration root must be an object",
+                severity="warning",
+                path=path,
+                profile_id=profile.id,
+            )
+            return
+        if lidar is not None and document.get("reference_frame") != lidar.coordinate_frame:
+            self._add(
+                "calibration_reference_mismatch",
+                "calibration reference_frame does not equal the active LiDAR label frame; "
+                "projection will remain disabled",
+                severity="warning",
+                path=path,
+                profile_id=profile.id,
+            )
+            return
+        cameras = document.get("cameras")
+        camera_document = (
+            cameras.get(profile.camera.camera_id)
+            if isinstance(cameras, Mapping)
+            else None
+        )
+        if not isinstance(camera_document, Mapping):
+            self._add(
+                "calibration_camera_missing",
+                f"calibration has no camera {profile.camera.camera_id!r}",
+                severity="warning",
+                path=path,
+                profile_id=profile.id,
+            )
+            return
+        try:
+            validate_rigid_transform(camera_document["T_camera_reference"])
+            if "correction_delta" in camera_document:
+                validate_rigid_transform(camera_document["correction_delta"])
+            intrinsic = np.asarray(camera_document["intrinsic"], dtype=np.float64)
+            if intrinsic.shape != (3, 3) or not np.isfinite(intrinsic).all():
+                raise ValueError("camera intrinsic must be a finite 3x3 matrix")
+            width, height = (int(value) for value in camera_document["image_size"])
+        except (KeyError, TypeError, ValueError) as exc:
+            self._add(
+                "calibration_numeric_invalid",
+                str(exc),
+                severity="warning",
+                path=path,
+                profile_id=profile.id,
+            )
+            return
+        self.calibration_image_sizes[profile.id] = (width, height)
+
     def _validate_profile(self, profile: DatasetProfileV2) -> None:
         lidar = self.manifest.lidar(profile.lidar_id)
         if profile.camera is not None and profile.camera.mode == "calibrated":
-            path = self._resolve_config_path(
-                profile.camera.calibration_path or "",
-                severity="warning",
-                profile_id=profile.id,
-            )
-            self._validate_hashed_file(
-                path,
-                profile.camera.calibration_sha256 or "",
-                missing_code="calibration_missing",
-                hash_code="calibration_hash_mismatch",
-                severity="warning",
-                profile_id=profile.id,
-            )
+            self._validate_calibration(profile, lidar)
         index_path = self._resolve_config_path(profile.frame_index.path)
         if not self._validate_hashed_file(
             index_path,
@@ -435,6 +575,20 @@ class _DatasetV2Validator:
         lidar_source_samples: set[str] = set()
         lidar_paths: set[str] = set()
         generation = profile.frame_index.generation
+        expected_order = sorted(
+            records,
+            key=lambda item: self._record_sort_key(item, lidar),
+        )
+        if tuple(item.frame_id for item in records) != tuple(
+            item.frame_id for item in expected_order
+        ):
+            self._add(
+                "frame_order_invalid",
+                "frame index order does not follow timestamp/logical sample ordering",
+                profile_id=profile.id,
+            )
+        camera_usage: Counter[str] = Counter()
+        camera_sequence: list[str | None] = []
         for expected_ordinal, record in enumerate(records):
             if record.ordinal != expected_ordinal:
                 self._record_issue(
@@ -512,6 +666,88 @@ class _DatasetV2Validator:
                 )
             self._validate_lidar_path(record, profile, lidar)
             self._validate_camera_binding(record, profile)
+            self._validate_record_timestamps(record, profile)
+            camera_id = record.camera.sample_id if record.camera is not None else None
+            camera_sequence.append(camera_id)
+            if camera_id is not None:
+                camera_usage[camera_id] += 1
+        matched = sum(camera_usage.values())
+        if profile.camera is not None and matched == 0:
+            self._add(
+                "camera_match_zero",
+                "profile camera has no matched frames; LiDAR frames remain usable",
+                severity="warning",
+                profile_id=profile.id,
+            )
+        reuse = sum(count - 1 for count in camera_usage.values())
+        repeat_run = _max_repeat_run(camera_sequence)
+        if matched and (reuse / matched > 0.5 or repeat_run > 3):
+            self._add(
+                "camera_reuse_high",
+                f"camera reuse={reuse}, maximum consecutive run={repeat_run}",
+                severity="warning",
+                profile_id=profile.id,
+            )
+
+    def _record_sort_key(
+        self,
+        record: FrameIndexRecordV2,
+        lidar: LidarSensorV2,
+    ) -> tuple[object, ...]:
+        table = self.timestamp_tables.get(lidar.id)
+        timestamp = (
+            table.timestamp_for(record.lidar.source_sample_id)
+            if table is not None
+            else None
+        )
+        if timestamp is not None:
+            return (0, timestamp, record.lidar.sample_id.encode("utf-8"))
+        return (1, record.lidar.sample_id.encode("utf-8"))
+
+    def _validate_record_timestamps(
+        self,
+        record: FrameIndexRecordV2,
+        profile: DatasetProfileV2,
+    ) -> None:
+        lidar_table = self.timestamp_tables.get(record.lidar.sensor_id)
+        if lidar_table is not None:
+            expected = lidar_table.timestamp_for(record.lidar.source_sample_id)
+            if expected is None:
+                self._record_issue(
+                    "lidar_timestamp_row_missing",
+                    record,
+                    profile,
+                    "LiDAR source sample has no timestamp CSV row",
+                )
+            elif record.lidar.timestamp_ns != expected:
+                self._record_issue(
+                    "lidar_timestamp_mismatch",
+                    record,
+                    profile,
+                    f"record timestamp={record.lidar.timestamp_ns}, CSV timestamp={expected}",
+                )
+        camera = record.camera
+        if camera is None:
+            return
+        camera_table = self.timestamp_tables.get(camera.sensor_id)
+        if camera_table is None:
+            return
+        expected_camera = camera_table.timestamp_for(camera.source_sample_id)
+        if expected_camera is None:
+            self._record_issue(
+                "camera_timestamp_row_missing",
+                record,
+                profile,
+                "matched camera source sample has no timestamp CSV row",
+                severity="warning",
+            )
+        elif camera.timestamp_ns is not None and camera.timestamp_ns != expected_camera:
+            self._record_issue(
+                "camera_timestamp_mismatch",
+                record,
+                profile,
+                f"record timestamp={camera.timestamp_ns}, CSV timestamp={expected_camera}",
+            )
 
     def _validate_lidar_path(
         self,
@@ -611,6 +847,8 @@ class _DatasetV2Validator:
                 path=path,
                 severity="warning",
             )
+        elif self.verify_images:
+            self._validate_camera_image(path, record, profile)
         if record.match.method == "exact_stem":
             if record.lidar.source_sample_id != camera.source_sample_id:
                 self._record_issue(
@@ -651,6 +889,37 @@ class _DatasetV2Validator:
                     profile,
                     f"abs(delta_ns)={abs(delta)} > tolerance_ns={tolerance}",
                 )
+
+    def _validate_camera_image(
+        self,
+        path: Path,
+        record: FrameIndexRecordV2,
+        profile: DatasetProfileV2,
+    ) -> None:
+        try:
+            with Image.open(path) as image:
+                size = image.size
+                image.verify()
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            self._record_issue(
+                "camera_decode_failed",
+                record,
+                profile,
+                f"camera image cannot be decoded: {exc}",
+                path=path,
+                severity="warning",
+            )
+            return
+        expected = self.calibration_image_sizes.get(profile.id)
+        if expected is not None and size != expected:
+            self._record_issue(
+                "calibration_image_size_mismatch",
+                record,
+                profile,
+                f"image size={size}, calibration image_size={expected}; projection disabled",
+                path=path,
+                severity="warning",
+            )
 
     def _resolve_config_path(
         self,
@@ -798,3 +1067,21 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _max_repeat_run(values: list[str | None]) -> int:
+    maximum = 0
+    current = 0
+    previous: str | None = None
+    for value in values:
+        if value is None:
+            previous = None
+            current = 0
+            continue
+        if value == previous:
+            current += 1
+        else:
+            previous = value
+            current = 1
+        maximum = max(maximum, current)
+    return maximum
