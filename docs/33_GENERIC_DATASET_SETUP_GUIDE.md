@@ -47,13 +47,16 @@ my_data/
 
 nearest CSV는 UTF-8 또는 UTF-8 BOM을 지원하며, 화면에서 다음을 명시한다.
 
-- sample ID 컬럼
-- 정수 timestamp 컬럼
-- 단위: `ns`, `us`, `ms`, `s`
-- clock domain
+- sample ID 컬럼: CSV 행을 point/image 파일의 원본 stem과 연결하는 열
+- 정수 timestamp 컬럼: CSV에 시간이 여러 개 있을 때 실제 동기화에 사용할 열
+- 단위: 선택한 숫자가 `ns`, `us`, `ms`, `s` 중 무엇인지 선언
+- clock domain: `bag`, `header`, `device`처럼 같은 시간 기준인지 구분하는 identity
 - 허용 오차
 
-두 센서의 clock domain이 다르면 연결하지 않는다. 내부 계산은 정수 nanosecond를 유지한다.
+clock domain은 단위 변환이나 자동 시간 보정값이 아니다. 두 센서의 clock domain이 다르면
+연결하지 않는다. 내부 계산은 정수 nanosecond를 유지한다. `metadata/<SENSOR_ID>.json`에
+`point_columns`가 명시된 입력은 그 전체 열 순서를 화면에 자동 입력하지만, 좌표계는 사용자가
+계속 명시적으로 확인해야 한다.
 
 ```csv
 sample_id,timestamp_ns
@@ -110,6 +113,22 @@ pointer 역할을 한다.
 
 한 세션에서 여러 LiDAR를 합치거나 동시에 활성화하지 않는다. 각 profile의 LiDAR 좌표계가 그
 profile 라벨의 reference frame이다.
+
+### 이미 생성한 데이터셋에 LiDAR profile 추가
+
+초기 구성에서 LiDAR 하나만 등록했더라도 데이터셋을 삭제하거나 새 dataset ID를 만들 필요가 없다.
+
+1. 첫 화면에서 `범용 v2 LiDAR profile 추가`를 누른다.
+2. 기존 `dataset.json`이 있는 구성 폴더를 선택한다.
+3. 미등록 LiDAR, metadata의 전체 point columns, timestamp CSV와 clock 설정을 확인한다.
+4. 좌표 계약을 확인하고 `변경 분석`을 누른다.
+5. frame/match/unmatched/reuse/max delta와 보존할 기존 라벨 수를 확인한다.
+6. `새 profile 추가`를 누른다.
+
+프로그램은 기존 dataset ID, 기본 profile, 라벨과 이전 generation을 유지한다. 기존 index와 taxonomy,
+새 profile index를 다음 revision의 한 generation에 기록하고 `dataset.json`을 마지막에 원자적으로
+교체한다. 분석 후 원본이나 manifest가 바뀌거나 저장이 실패하면 추가를 거부하고 기존 구성을
+그대로 연다. 완료 후 새 profile로 바로 라벨링 화면을 연다.
 
 ## 5. Timestamp를 다시 연결하기
 

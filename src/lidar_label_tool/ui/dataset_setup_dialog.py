@@ -274,7 +274,14 @@ class DatasetSetupDialog(QDialog):
                 3,
                 QTableWidgetItem(f"lidar:{candidate.suggested_id}"),
             )
-            self.lidar_table.setItem(row, 4, QTableWidgetItem(""))
+            columns_item = QTableWidgetItem(
+                ",".join(candidate.declared_point_columns)
+            )
+            if candidate.metadata_relative_path is not None:
+                columns_item.setToolTip(
+                    f"명시적 metadata에서 읽음: {candidate.metadata_relative_path}"
+                )
+            self.lidar_table.setItem(row, 4, columns_item)
             timestamp_combo = QComboBox()
             timestamp_combo.addItem("사용 안 함", None)
             for timestamp_name in timestamp_names:
@@ -295,8 +302,34 @@ class DatasetSetupDialog(QDialog):
         self.camera_timestamp_combo.currentIndexChanged.connect(
             self._configuration_changed
         )
+        self._apply_timestamp_column_suggestions(result)
         self._update_camera_fields()
         self._update_sync_fields()
+
+    def _apply_timestamp_column_suggestions(
+        self,
+        result: DatasetDiscoveryResult,
+    ) -> None:
+        usable = [
+            set(item.columns)
+            for item in result.timestamps
+            if not item.read_error and item.columns
+        ]
+        if not usable:
+            return
+        common = set.intersection(*usable)
+        if "sample_id" in common:
+            self.sample_column_edit.setText("sample_id")
+        for column, clock_domain in (
+            ("bag_time_ns", "bag"),
+            ("timestamp_ns", "unspecified"),
+            ("header_time_ns", "header"),
+        ):
+            if column in common:
+                self.value_column_edit.setText(column)
+                self.unit_combo.setCurrentText("ns")
+                self.clock_domain_edit.setText(clock_domain)
+                break
 
     def build_request(self) -> DatasetSetupRequest:
         if self.discovery is None:

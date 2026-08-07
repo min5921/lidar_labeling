@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -46,6 +47,31 @@ class DatasetDiscoveryTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertEqual(len({item.suggested_id for item in first.lidars}), 2)
             self.assertTrue(all(item.suggested_id.startswith("lidar_") for item in first.lidars))
+
+    def test_reads_explicit_point_layout_from_sensor_metadata(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            _write(root / "sensors" / "lidar" / "AEVA" / "frames" / "0.bin", b"x")
+            metadata = {
+                "sensor_id": "AEVA",
+                "point_columns": ["x", "y", "z", "velocity", "intensity"],
+                "output_dtype": "float32",
+                "output_byte_order": "little-endian",
+            }
+            _write(
+                root / "metadata" / "AEVA.json",
+                json.dumps(metadata).encode("utf-8"),
+            )
+
+            candidate = discover_dataset(root).lidars[0]
+
+            self.assertEqual(
+                candidate.declared_point_columns,
+                ("x", "y", "z", "velocity", "intensity"),
+            )
+            self.assertEqual(candidate.declared_point_dtype, "float32")
+            self.assertEqual(candidate.declared_byte_order, "little-endian")
+            self.assertEqual(candidate.metadata_relative_path, "metadata/AEVA.json")
 
 
 def _write(path: Path, payload: bytes) -> None:

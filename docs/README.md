@@ -7,7 +7,7 @@
 1. [`32_GENERIC_DATASET_V2_CONTRACT.md`](32_GENERIC_DATASET_V2_CONTRACT.md):
    활성 LiDAR 1개, 카메라 0~1개, timestamp, profile, 라벨 identity의 최종 계약
 2. [`33_GENERIC_DATASET_SETUP_GUIDE.md`](33_GENERIC_DATASET_SETUP_GUIDE.md):
-   원본 폴더 자동 탐색, 프로그램 내 구성, profile 선택과 재동기화 사용법
+   원본 폴더 자동 탐색, 프로그램 내 구성, 기존 v2 LiDAR profile 추가와 재동기화 사용법
 3. [`04_OPEN_DECISIONS.md`](04_OPEN_DECISIONS.md): 확정 결정과 아직 보류된 범위
 4. [`03_DATA_CONTRACTS.md`](03_DATA_CONTRACTS.md): 기존 v1과 v2 데이터 구조의 경계
 5. [`18_PREFLIGHT_AND_QA.md`](18_PREFLIGHT_AND_QA.md): 열기 전 검사와 오류 등급

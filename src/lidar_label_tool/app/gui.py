@@ -228,7 +228,7 @@ def run_gui(
             if workflow.exec() != QDialog.DialogCode.Accepted:
                 return 0
             selected_root = workflow.selected_dataset
-            selected_profile_id = None
+            selected_profile_id = workflow.selected_profile_id
             if selected_root is None:
                 return 0
 

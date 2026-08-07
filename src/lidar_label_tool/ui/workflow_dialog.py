@@ -47,6 +47,7 @@ from lidar_label_tool.services.one_chip_calibration_verification import (
     verify_calibration,
 )
 from lidar_label_tool.ui.dataset_resync_dialog import DatasetResyncV2Dialog
+from lidar_label_tool.ui.dataset_profile_add_dialog import DatasetProfileAddDialog
 
 
 _TaskResult = TypeVar("_TaskResult")
@@ -657,6 +658,7 @@ class WorkflowDialog(QDialog):
         super().__init__()
         self.config_path = config_path
         self.selected_dataset: Path | None = None
+        self.selected_profile_id: str | None = None
         self.setWindowTitle("LiDAR Label Tool")
         self.setMinimumSize(580, 380)
         layout = QVBoxLayout(self)
@@ -675,6 +677,11 @@ class WorkflowDialog(QDialog):
                 "범용 v2 재동기화",
                 self._resync_v2,
                 QStyle.StandardPixmap.SP_BrowserReload,
+            ),
+            (
+                "범용 v2 LiDAR profile 추가",
+                self._add_v2_profile,
+                QStyle.StandardPixmap.SP_FileDialogNewFolder,
             ),
             ("데이터셋 검사", self._preflight, QStyle.StandardPixmap.SP_DialogApplyButton),
             ("라벨 통계", self._statistics, QStyle.StandardPixmap.SP_FileDialogInfoView),
@@ -734,6 +741,7 @@ class WorkflowDialog(QDialog):
         selected = self._choose_dataset("원본 데이터 폴더 또는 구성된 데이터셋 선택")
         if selected is not None:
             self.selected_dataset = selected
+            self.selected_profile_id = None
             self.accept()
 
     def _resync_v2(self) -> None:
@@ -751,6 +759,25 @@ class WorkflowDialog(QDialog):
             return
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.selected_dataset = selected
+            self.selected_profile_id = None
+            self.accept()
+
+    def _add_v2_profile(self) -> None:
+        selected = self._choose_dataset("LiDAR profile을 추가할 범용 v2 구성 폴더 선택")
+        if selected is None:
+            return
+        try:
+            dialog = DatasetProfileAddDialog(selected, self)
+        except (OSError, ValueError, KeyError) as exc:
+            QMessageBox.critical(
+                self,
+                "범용 v2 데이터셋이 아님",
+                f"{selected}\n\n{type(exc).__name__}: {exc}",
+            )
+            return
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.selected_dataset = selected
+            self.selected_profile_id = dialog.selected_profile_id
             self.accept()
 
     def _conversion(self, mode: str) -> None:

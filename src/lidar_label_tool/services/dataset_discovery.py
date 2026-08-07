@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
-from typing import Callable, Literal
+from typing import Any, Callable, Literal, Mapping, cast
 
 
 SensorKind = Literal["lidar", "camera"]
@@ -55,6 +56,10 @@ class SensorCandidate:
     directory: str
     data_pattern: str
     samples: tuple[DiscoveredSample, ...]
+    declared_point_columns: tuple[str, ...] = ()
+    declared_point_dtype: str | None = None
+    declared_byte_order: str | None = None
+    metadata_relative_path: str | None = None
 
     @property
     def sample_count(self) -> int:
@@ -146,6 +151,20 @@ def discover_dataset(
                     ordered[0].parent,
                 )
             )
+        point_columns: tuple[str, ...] = ()
+        point_dtype: str | None = None
+        byte_order: str | None = None
+        metadata_relative_path: str | None = None
+        if kind == "lidar":
+            (
+                point_columns,
+                point_dtype,
+                byte_order,
+                metadata_relative_path,
+                metadata_issue,
+            ) = _declared_lidar_layout(source_root, display_name)
+            if metadata_issue is not None:
+                issues.append(metadata_issue)
         candidates.append(
             SensorCandidate(
                 key=f"{kind}:{directory}:{suffix}",
@@ -160,6 +179,10 @@ def discover_dataset(
                     else f"{{sample_id}}{suffix}"
                 ),
                 samples=samples,
+                declared_point_columns=point_columns,
+                declared_point_dtype=point_dtype,
+                declared_byte_order=byte_order,
+                metadata_relative_path=metadata_relative_path,
             )
         )
 
@@ -241,6 +264,88 @@ def _timestamp_candidate(path: Path, root: Path) -> TimestampCandidate:
         relative_path=_relative(root, path),
         columns=columns,
     )
+
+
+def _declared_lidar_layout(
+    root: Path,
+    display_name: str,
+) -> tuple[
+    tuple[str, ...],
+    str | None,
+    str | None,
+    str | None,
+    DiscoveryIssue | None,
+]:
+    metadata_root = root / "metadata"
+    if not metadata_root.is_dir():
+        return (), None, None, None, None
+    paths = sorted(metadata_root.glob("*.json"), key=lambda path: _utf8_sort_key(path.name))
+    exact = [path for path in paths if path.stem.casefold() == display_name.casefold()]
+    ordered = exact + [path for path in paths if path not in exact]
+    for path in ordered:
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            if path in exact:
+                return (
+                    (),
+                    None,
+                    None,
+                    _relative(root, path),
+                    DiscoveryIssue(
+                        "invalid_lidar_metadata",
+                        f"LiDAR metadata를 읽을 수 없습니다: {type(exc).__name__}: {exc}",
+                        path,
+                    ),
+                )
+            continue
+        if not isinstance(document, Mapping):
+            continue
+        data = cast(Mapping[str, Any], document)
+        if str(data.get("sensor_id", "")).casefold() != display_name.casefold():
+            continue
+        raw_columns = data.get("point_columns")
+        if (
+            not isinstance(raw_columns, list)
+            or not raw_columns
+            or any(not isinstance(value, str) or not value for value in raw_columns)
+        ):
+            return (
+                (),
+                None,
+                None,
+                _relative(root, path),
+                DiscoveryIssue(
+                    "invalid_lidar_metadata",
+                    "LiDAR metadata의 point_columns가 올바르지 않습니다.",
+                    path,
+                ),
+            )
+        columns = tuple(cast(list[str], raw_columns))
+        if len(columns) != len(set(columns)) or not {"x", "y", "z"}.issubset(columns):
+            return (
+                (),
+                None,
+                None,
+                _relative(root, path),
+                DiscoveryIssue(
+                    "invalid_lidar_metadata",
+                    "LiDAR metadata의 point_columns에는 중복 없는 x/y/z가 필요합니다.",
+                    path,
+                ),
+            )
+        return (
+            columns,
+            str(data["output_dtype"]) if data.get("output_dtype") is not None else None,
+            (
+                str(data["output_byte_order"])
+                if data.get("output_byte_order") is not None
+                else None
+            ),
+            _relative(root, path),
+            None,
+        )
+    return (), None, None, None, None
 
 
 def _relative(root: Path, path: Path) -> str:
