@@ -376,8 +376,9 @@ E:\one_chip_converted\annotations\lidar_label_tool\.session.lock
 
 ## 8. 다른 실험실 PC에서 사용하기
 
-프로젝트 저장소를 다른 PC에 clone 또는 pull한 뒤 Windows에서는 `setup_windows.bat`,
-Linux에서는 `./setup_linux.sh`를 한 번 실행한다. 이후 OS별 run 스크립트에서 원본과 export
+프로젝트 저장소를 다른 PC에 clone 또는 pull한 뒤 Windows에서는
+`launchers/windows/setup_windows.bat`, Linux에서는 `./launchers/linux/setup_linux.sh`를 한 번
+실행한다. 이후 OS별 run 스크립트에서 원본과 export
 경로를 직접 선택한다.
 
 대용량 dataset인 `E:\one_chip_converted`는 저장소에 포함하지 않고 별도 저장장치나 실험실

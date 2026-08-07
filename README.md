@@ -50,18 +50,18 @@ cd lidar_labeling
 ### 3. 가상환경 설치와 실행
 
 ```powershell
-.\setup_windows.bat
-.\run_windows.bat
+.\launchers\windows\setup_windows.bat
+.\launchers\windows\run_windows.bat
 ```
 
-`setup_windows.bat`은 `.venv`를 만들고 고정된 package를 설치한 뒤 환경을 검증합니다. 마지막에
+`launchers/windows/setup_windows.bat`은 `.venv`를 만들고 고정된 package를 설치한 뒤 환경을 검증합니다. 마지막에
 `[OK] LiDAR Label Tool source environment verified`가 표시되어야 합니다. 이후 평상시에는
-`run_windows.bat`만 실행하면 됩니다.
+`launchers/windows/run_windows.bat`만 실행하면 됩니다.
 
 자동 Python 탐색이 실패하면 위치를 직접 지정합니다.
 
 ```powershell
-.\setup_windows.bat -PythonCommand C:\Python310\python.exe
+.\launchers\windows\setup_windows.bat -PythonCommand C:\Python310\python.exe
 ```
 
 ## Ubuntu Linux에서 처음 설치
@@ -76,15 +76,15 @@ cd ~/lab
 git clone https://github.com/min5921/lidar_labeling.git
 cd lidar_labeling
 
-chmod +x setup_linux.sh run_linux.sh
-./setup_linux.sh
-./run_linux.sh
+chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
+./launchers/linux/setup_linux.sh
+./launchers/linux/run_linux.sh
 ```
 
 다른 Python을 사용하려면 다음처럼 지정합니다.
 
 ```bash
-PYTHON_BIN=python3.12 ./setup_linux.sh
+PYTHON_BIN=python3.12 ./launchers/linux/setup_linux.sh
 ```
 
 SSH만 연결된 서버에는 GUI를 표시할 데스크톱 화면이 없을 수 있습니다. 로컬 desktop session 또는
@@ -112,13 +112,13 @@ python -m lidar_label_tool gui
 Windows:
 
 ```powershell
-.\run_windows.bat
+.\launchers\windows\run_windows.bat
 ```
 
 Linux:
 
 ```bash
-./run_linux.sh
+./launchers/linux/run_linux.sh
 ```
 
 이미 clone한 저장소를 업데이트할 때는 작업 라벨을 백업하고 다음 순서로 실행합니다.
@@ -128,7 +128,8 @@ git status
 git pull
 ```
 
-업데이트 후 Windows는 `setup_windows.bat`, Linux는 `./setup_linux.sh`를 다시 실행하여 package와
+업데이트 후 Windows는 `launchers/windows/setup_windows.bat`, Linux는
+`./launchers/linux/setup_linux.sh`를 다시 실행하여 package와
 프로젝트 설치를 현재 commit에 맞춥니다. `git status`에 수정 파일이 있으면 먼저 변경 내용을
 확인하고 무조건 덮어쓰지 않습니다.
 
@@ -243,14 +244,14 @@ Windows:
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool preflight E:\one_chip_converted
-.\run_windows.bat E:\one_chip_converted
+.\launchers\windows\run_windows.bat E:\one_chip_converted
 ```
 
 Linux:
 
 ```bash
 ./.venv/bin/python -m lidar_label_tool preflight /data/one_chip_converted
-./run_linux.sh /data/one_chip_converted
+./launchers/linux/run_linux.sh /data/one_chip_converted
 ```
 
 Preflight 종료 코드는 다음과 같습니다.

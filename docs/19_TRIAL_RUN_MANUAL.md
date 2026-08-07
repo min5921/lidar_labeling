@@ -75,13 +75,13 @@ JSON으로 저장해서 피드백에 첨부하고 싶으면 다음처럼 실행�
 가장 쉬운 방법은 다음 파일을 더블클릭하는 것이다.
 
 ```text
-C:\Users\USER\Desktop\Labelling_tool\run_merged_sample.bat
+C:\Users\USER\Desktop\Labelling_tool\launchers\legacy\run_merged_sample.bat
 ```
 
 다른 데이터셋을 고르려면 다음 파일을 더블클릭한다.
 
 ```text
-C:\Users\USER\Desktop\Labelling_tool\run_gui.bat
+C:\Users\USER\Desktop\Labelling_tool\launchers\windows\run_windows.bat
 ```
 
 PowerShell에서 직접 열 수도 있다.

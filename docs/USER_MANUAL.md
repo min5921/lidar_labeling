@@ -31,33 +31,34 @@
 Windows:
 
 ```text
-setup_windows.bat
+launchers\windows\setup_windows.bat
 ```
 
 설치가 끝난 뒤 다음 파일을 더블클릭한다.
 
 ```text
-run_windows.bat
+launchers\windows\run_windows.bat
 ```
 
 Linux:
 
 ```bash
-chmod +x setup_linux.sh run_linux.sh
-./setup_linux.sh
-./run_linux.sh
+chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
+./launchers/linux/setup_linux.sh
+./launchers/linux/run_linux.sh
 ```
 
 첫 화면에서 데이터 폴더 열기, 범용 v2 재동기화, Preflight, 통계, export를 선택한다. 특정
 one_chip 원본 변환·검증은 `고급 도구 — one_chip 레거시 전용`에 분리되어 있다. 사용자 설정은
 Windows의 AppData 또는 Linux의 XDG 사용자 경로에 저장된다.
 
-전체 변환된 merged 샘플을 바로 열려면 `run_merged_sample.bat`을 더블클릭한다.
+전체 변환된 merged 샘플을 바로 열려면 `launchers/legacy/run_merged_sample.bat`을
+더블클릭한다.
 
 다른 데이터를 선택하려면:
 
 1. `C:\Users\USER\Desktop\Labelling_tool` 폴더를 연다.
-2. `run_windows.bat`을 더블클릭한다.
+2. `launchers/windows/run_windows.bat`을 더블클릭한다.
 3. 폴더 선택 창에서 다음 샘플 폴더를 선택한다.
 
 ```text
@@ -81,7 +82,7 @@ timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA�
 프로젝트 폴더에서 다음 명령을 실행한다.
 
 ```powershell
-.\run_windows.bat
+.\launchers\windows\run_windows.bat
 ```
 
 샘플 경로를 직접 지정하려면 다음 명령을 사용한다.
@@ -100,12 +101,13 @@ timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA�
 Linux에서 데이터셋 경로를 직접 지정하려면 다음처럼 실행한다.
 
 ```bash
-./run_linux.sh /data/one_chip_converted
+./launchers/linux/run_linux.sh /data/one_chip_converted
 ```
 
 ## 4. `.venv`가 없을 때
 
-`setup_windows.bat` 또는 `./setup_linux.sh`를 실행한다. setup은 `.venv`를 만들고,
+`launchers/windows/setup_windows.bat` 또는 `./launchers/linux/setup_linux.sh`를 실행한다.
+setup은 `.venv`를 만들고,
 `requirements-lock.txt`의 정확한 버전을 설치한 뒤 프로그램과 기본 설정을 검증한다.
 Conda 환경을 사용하는 방법과 Linux 시스템 package 요구사항은
 `docs/31_LAB_SOURCE_SETUP.md`에 있다.

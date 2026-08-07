@@ -33,7 +33,7 @@ Python은 64-bit 3.10 이상을 설치한다. 처음 환경을 만들 때는 PyP
 
 ## 3. Windows venv
 
-저장소 루트에서 `setup_windows.bat`을 더블클릭한다. 스크립트는 다음 작업을 수행한다.
+`launchers/windows/setup_windows.bat`을 더블클릭한다. 스크립트는 다음 작업을 수행한다.
 
 1. Python 3.10 이상 탐색
 2. `.venv` 생성
@@ -41,16 +41,17 @@ Python은 64-bit 3.10 이상을 설치한다. 처음 환경을 만들 때는 PyP
 4. 프로젝트 editable 설치
 5. package 버전과 기본 설정 검증
 
-설치 후 `run_windows.bat`을 더블클릭한다. dataset 경로를 직접 전달할 수도 있다.
+설치 후 `launchers/windows/run_windows.bat`을 더블클릭한다. dataset 경로를 직접 전달할 수도
+있다.
 
 ```powershell
-.\run_windows.bat E:\one_chip_converted
+.\launchers\windows\run_windows.bat E:\one_chip_converted
 ```
 
 Python Launcher나 PATH 대신 특정 Python 실행 파일을 지정하려면 다음처럼 실행한다.
 
 ```powershell
-.\setup_windows.bat -PythonCommand C:\Python310\python.exe
+.\launchers\windows\setup_windows.bat -PythonCommand C:\Python310\python.exe
 ```
 
 ## 4. Linux venv
@@ -65,21 +66,21 @@ sudo apt-get install python3 python3-venv libegl1 libgl1 libxkbcommon-x11-0 libx
 저장소 루트에서 실행 권한을 확인하고 setup과 run을 실행한다.
 
 ```bash
-chmod +x setup_linux.sh run_linux.sh
-./setup_linux.sh
-./run_linux.sh
+chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
+./launchers/linux/setup_linux.sh
+./launchers/linux/run_linux.sh
 ```
 
 특정 Python을 쓰려면 setup에 환경 변수를 지정한다.
 
 ```bash
-PYTHON_BIN=python3.12 ./setup_linux.sh
+PYTHON_BIN=python3.12 ./launchers/linux/setup_linux.sh
 ```
 
 dataset 경로를 직접 전달할 수도 있다.
 
 ```bash
-./run_linux.sh /data/one_chip_converted
+./launchers/linux/run_linux.sh /data/one_chip_converted
 ```
 
 ## 5. Conda 대안

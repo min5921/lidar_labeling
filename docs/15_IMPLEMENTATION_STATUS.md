@@ -47,7 +47,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 - frame별 undo/redo와 dirty 상태 표시
 - Ctrl+S 원자 저장과 frame 이동 시 저장 성공 후 전환
 - Waymo camera calibration 기반 현재 작업 3D box live wireframe projection
-- dataset folder picker, `run_gui.bat`, 한국어 사용자 매뉴얼
+- dataset folder picker, `launchers/`의 OS별 실행 파일, 한국어 사용자 매뉴얼
 - dataset preflight summary와 실제 작업 경로 쓰기 probe
 - 읽기 전용 dataset용 별도 annotation workspace 선택
 - camera near-plane/image clipping, undistorted frustum filter, camera-synced box 투영

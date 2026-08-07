@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+launcher_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(cd "$launcher_dir/../.." && pwd)"
 python_command="${PYTHON_BIN:-python3}"
 venv_python="$project_root/.venv/bin/python"
 
@@ -29,4 +30,4 @@ fi
 "$venv_python" scripts/verify_source_environment.py
 
 echo
-echo "Setup completed. Run ./run_linux.sh to start LiDAR Label Tool."
+echo "Setup completed. Run ./launchers/linux/run_linux.sh to start LiDAR Label Tool."

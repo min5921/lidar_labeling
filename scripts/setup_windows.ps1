@@ -52,7 +52,7 @@ function New-ProjectEnvironment {
         return
     }
 
-    throw "Python 3.10 or newer was not found. Install Python and run setup_windows.bat again."
+    throw "Python 3.10 or newer was not found. Install Python and run launchers\windows\setup_windows.bat again."
 }
 
 Set-Location $ProjectRoot

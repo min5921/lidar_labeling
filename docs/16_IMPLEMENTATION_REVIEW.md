@@ -57,7 +57,7 @@ open/edit/save 인증, 코드 서명, third-party license 정리다.
 ### 이번 재검수에서 바로 개선한 내용
 
 - dataset 경로를 생략하면 폴더 선택 창이 열리도록 변경했다.
-- `run_gui.bat`을 추가해 현재 개발 PC에서 명령어 없이 실행할 수 있게 했다.
+- `launchers/windows/run_windows.bat`으로 현재 개발 PC에서 명령어 없이 실행할 수 있게 했다.
 - 주요 패널 용어를 한국어로 정리했다.
 - 현재 frame/전체 frame, 라벨 출처, revision, 미저장 상태를 표시한다.
 - 실제 작업 JSON 저장 위치를 화면에 표시한다.

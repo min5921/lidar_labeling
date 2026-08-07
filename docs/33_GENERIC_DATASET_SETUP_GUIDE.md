@@ -66,7 +66,7 @@ sample_id,timestamp_ns
 
 ## 2. 프로그램에서 처음 구성하기
 
-1. `run_windows.bat` 또는 `run_linux.sh`를 실행한다.
+1. `launchers/windows/run_windows.bat` 또는 `launchers/linux/run_linux.sh`를 실행한다.
 2. `데이터 폴더/데이터셋 열기`를 누른다.
 3. `dataset.json`이 없는 원본 폴더를 선택한다.
 4. 자동 탐색 결과에서 사용할 LiDAR를 하나 이상 체크한다.

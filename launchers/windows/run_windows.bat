@@ -1,10 +1,12 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+
+for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
+cd /d "%PROJECT_ROOT%"
 
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] The project virtual environment was not found.
-    echo Run setup_windows.bat first.
+    echo Run launchers\windows\setup_windows.bat first.
     pause
     exit /b 1
 )
