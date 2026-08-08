@@ -68,7 +68,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 - 3D 객체 이름표와 BEV 이름·length×width 표시 토글
 - 신규 생성 객체의 순차 다음 프레임 이어받기와 ID 유지
 - Object Detail 3D 사용자 시점 유지, 신규 박스에서만 초기화
-- W/A/S/D 위치, R/F·T/G·Y/H 크기, 좌우 방향키 프레임 단축키
+- W/A/S/D x/y 위치, Space/Ctrl 단독 z 위치, R/F·T/G·Y/H 크기, 좌우 방향키 프레임 단축키
 - 센서/return별 point cloud 로드 오류 격리와 구조화된 `sensor_errors`
 - reference layer별 JSON 오류 격리와 `reference_layer_errors`
 - 센서별 Not required/Applied/Missing/Invalid/Disabled/Load failed/Unknown 표시

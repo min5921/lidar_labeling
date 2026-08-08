@@ -91,6 +91,7 @@
 | 1 / 2 / 3 / 4 | Car / Pedestrian / Cyclist / Sign 선택 |
 | W / S | 선택 box x 전방 / 후방 이동 |
 | A / D | 선택 box y 좌측 / 우측 이동 |
+| Space / Ctrl 단독 | 선택 box z 위 / 아래 이동 |
 | Shift+W/A/S/D | 선택 box 미세 이동 |
 | Q / E | 선택 box yaw 감소 / 증가 |
 | R / F | length 증가 / 감소 |
@@ -98,7 +99,9 @@
 | Y / H | height 증가 / 감소 |
 | Ctrl+Z / Ctrl+Y | 현재 frame의 undo / redo |
 
-단축키는 설정 가능한 step 값을 사용하며 텍스트 입력 focus에서는 비활성화한다.
+이동 단축키는 설정 가능한 step 값을 사용하며 텍스트 입력 focus에서는 비활성화한다.
+Ctrl 하강은 다른 키와 조합하지 않고 Ctrl만 눌렀다 놓을 때 실행된다. 따라서 Ctrl+S,
+Ctrl+Z, Ctrl+Y 등 기존 조합 단축키는 z 위치를 바꾸지 않는다.
 
 ## 프레임 이동과 저장
 

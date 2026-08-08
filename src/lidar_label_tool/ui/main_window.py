@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -155,6 +155,8 @@ class MainWindow(QMainWindow):
         self._detail_reset_requested = False
         self._suppress_auto_focus = False
         self._rendered_point_count = 0
+        self._control_only_pending = False
+        self._application_event_filter_installed = False
         self.render_cache = PointCloudRenderCache(
             max_cache_mb=int(self.config["performance"]["max_cache_mb"])
         )
@@ -170,6 +172,10 @@ class MainWindow(QMainWindow):
         )
         self.recovery_timer.timeout.connect(self._write_recovery_snapshot)
         self.recovery_timer.start()
+        application = QApplication.instance()
+        if application is not None:
+            application.installEventFilter(self)
+            self._application_event_filter_installed = True
         self._request_frame(self.index.frame_ids[0])
 
     def _build_ui(self) -> None:
@@ -441,7 +447,7 @@ class MainWindow(QMainWindow):
         help_text = QLabel(
             "1. 객체 목록·전체 3D·BEV 박스를 클릭해 선택\n"
             "2. W/S: 앞뒤 · A/D: 좌우 · Q/E: 회전\n"
-            "3. R/F: 길이 · T/G: 폭 · Y/H: 높이\n"
+            "3. Space/Ctrl 단독: 위/아래 · R/F: 길이 · T/G: 폭 · Y/H: 높이\n"
             "4. ←/→: 이전/다음 프레임\n"
             "5. ‘새 박스 만들기’ 후 열린 BEV에서 위치 클릭\n"
             "6. Ctrl+S 저장 · Ctrl+Z 되돌리기"
@@ -486,6 +492,10 @@ class MainWindow(QMainWindow):
         add(QKeySequence.StandardKey.Undo, self._shortcut_undo)
         add(QKeySequence.StandardKey.Redo, self._shortcut_redo)
         add(QKeySequence(Qt.Key.Key_Delete), self._shortcut_delete)
+        add(
+            QKeySequence(Qt.Key.Key_Space),
+            lambda: self._nudge_selected("z", 1.0),
+        )
         shortcuts = {
             Qt.Key.Key_W: ("x", 1.0),
             Qt.Key.Key_S: ("x", -1.0),
@@ -514,6 +524,43 @@ class MainWindow(QMainWindow):
                 QKeySequence(str(index)),
                 lambda name=str(class_config["name"]): self._choose_class_from_shortcut(name),
             )
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Recognize Ctrl by itself without stealing Ctrl-based shortcuts."""
+        event_type = event.type()
+        if isinstance(event, QKeyEvent) and event_type in {
+            QEvent.Type.KeyPress,
+            QEvent.Type.KeyRelease,
+            QEvent.Type.ShortcutOverride,
+        }:
+            targets_window = isinstance(watched, QWidget) and watched.window() is self
+            if event.key() == Qt.Key.Key_Control:
+                if (
+                    event_type == QEvent.Type.KeyPress
+                    and targets_window
+                    and not event.isAutoRepeat()
+                ):
+                    self._control_only_pending = True
+                elif event_type == QEvent.Type.KeyRelease:
+                    move_down = (
+                        targets_window
+                        and self._control_only_pending
+                        and not event.isAutoRepeat()
+                    )
+                    self._control_only_pending = False
+                    if move_down:
+                        self._nudge_selected("z", -1.0)
+            elif event_type in {
+                QEvent.Type.KeyPress,
+                QEvent.Type.ShortcutOverride,
+            }:
+                self._control_only_pending = False
+        elif event_type in {
+            QEvent.Type.ApplicationDeactivate,
+            QEvent.Type.WindowDeactivate,
+        }:
+            self._control_only_pending = False
+        return super().eventFilter(watched, event)
 
     def _populate_index(self) -> None:
         self.frame_combo.blockSignals(True)
@@ -1634,6 +1681,11 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self._closing = True
+        if self._application_event_filter_installed:
+            application = QApplication.instance()
+            if application is not None:
+                application.removeEventFilter(self)
+            self._application_event_filter_installed = False
         self.recovery_timer.stop()
         self.request_generation += 1
         self.executor.shutdown(wait=False, cancel_futures=True)

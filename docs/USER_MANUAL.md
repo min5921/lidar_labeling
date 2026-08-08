@@ -316,11 +316,15 @@ SideView를 켜면 선택 박스 중심과 상·하단 사각 handle이 표시�
 | 1 / 2 / 3 / 4 | Car / Pedestrian / Cyclist / Sign |
 | W / S | x 전방 / 후방 이동 |
 | A / D | y 좌측 / 우측 이동 |
+| Space / Ctrl 단독 | z 위 / 아래 이동 |
 | Shift+W/A/S/D | x/y 미세 이동 |
 | Q / E | yaw 감소 / 증가 |
 | R / F | length 증가 / 감소 |
 | T / G | width 증가 / 감소 |
 | Y / H | height 증가 / 감소 |
+
+`Ctrl` 하강은 Ctrl만 눌렀다 놓은 경우에 실행된다. `Ctrl+S`, `Ctrl+Z`, `Ctrl+Y`처럼
+다른 키와 조합하면 박스 높이는 바뀌지 않는다.
 
 수치 입력칸이나 클래스 콤보에 focus가 있을 때는 우발 편집을 막기 위해 일부 전역 단축키가 동작하지 않는다. 객체 목록에 focus가 있어도 편집 단축키는 사용할 수 있다.
 
