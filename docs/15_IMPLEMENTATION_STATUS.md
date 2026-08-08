@@ -47,6 +47,14 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 - frame별 undo/redo와 dirty 상태 표시
 - Ctrl+S 원자 저장과 frame 이동 시 저장 성공 후 전환
 - Waymo camera calibration 기반 현재 작업 3D box live wireframe projection
+- 기존 dataset adapter와 작업/source 3D label을 재사용하는 독립 camera–LiDAR calibration 편집기
+- 기존 calibration 기준 6DoF·intrinsic 조정, 전/후 point/box preview, 검증 frame 기록
+- calibration 편집기의 camera/LiDAR 높이 비율 slider·splitter 동기화
+- camera 투영 point 1~30 px 크기 slider와 기본 OFF인 선택적 검정 외곽선 렌더링
+- camera 원본 이미지만 검정 배경으로 ON/OFF하고 projection overlay는 유지하는 비교 모드
+- frame별 세션 전용 BEV 기준 박스 생성·이동·resize·yaw·수치 편집과 camera 즉시 투영
+- calibration 기준 박스의 point floor z 맞춤, 기존 라벨 읽기 전용 유지와 저장 경로 완전 분리
+- 원본 calibration 덮어쓰기 금지와 schema 검증·atomic Save As·조정본 `.bak`
 - dataset folder picker, `launchers/`의 OS별 실행 파일, 한국어 사용자 매뉴얼
 - dataset preflight summary와 실제 작업 경로 쓰기 probe
 - 읽기 전용 dataset용 별도 annotation workspace 선택
@@ -101,7 +109,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 186개 통과
+- 전체 unit/integration/schema 회귀 테스트 196개 통과
 - 범용 v2 신규 모듈 mypy와 저장소 전체 Ruff 통과
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구

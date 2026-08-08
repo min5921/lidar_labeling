@@ -13,7 +13,8 @@
 - 최초 설치 또는 의존성 갱신: `linux/setup_linux.sh`
 - 라벨링 도구 실행: `linux/run_linux.sh`
 
-`legacy/run_merged_sample.bat`은 예전 merged 샘플 전용이므로 일반 데이터셋에는 사용하지
-않는다.
+`windows/run_calibration.bat`과 `linux/run_calibration.sh`는 calibration 편집 기능용 실행
+파일이다. `legacy/run_merged_sample.bat`은 예전 merged 샘플 전용이므로 일반 데이터셋에는
+사용하지 않는다.
 
 개발·검증·패키징 자동화는 저장소 루트가 아니라 `scripts/`와 `packaging/`에서 관리한다.

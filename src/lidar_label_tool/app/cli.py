@@ -44,6 +44,27 @@ def _parser() -> argparse.ArgumentParser:
         help="dataset root; omit it to select a folder in the GUI",
     )
     gui_parser.add_argument("--profile")
+    calibrate_parser = subparsers.add_parser(
+        "calibrate",
+        help="open the non-destructive LiDAR/camera calibration editor",
+    )
+    calibrate_parser.add_argument(
+        "dataset",
+        type=Path,
+        nargs="?",
+        help="dataset root; omit it to select a folder in the calibration GUI",
+    )
+    calibrate_parser.add_argument("--profile")
+    calibrate_parser.add_argument(
+        "--calibration",
+        type=Path,
+        help="existing generic calibration JSON to use instead of dataset auto-detection",
+    )
+    calibrate_parser.add_argument(
+        "--output",
+        type=Path,
+        help="initial Save As path; the source calibration is never overwritten",
+    )
     export_parser = subparsers.add_parser(
         "export", help="explicitly export labels without changing working labels"
     )
@@ -356,6 +377,16 @@ def main(argv: list[str] | None = None) -> int:
             from lidar_label_tool.app.gui import run_gui
 
             return run_gui(args.dataset, args.config, profile_id=args.profile)
+        if args.command == "calibrate":
+            from lidar_label_tool.app.calibration_gui import run_calibration_gui
+
+            return run_calibration_gui(
+                args.dataset,
+                args.config,
+                profile_id=args.profile,
+                calibration_path=args.calibration,
+                output_path=args.output,
+            )
         if args.command == "export":
             return _export(args)
         if args.command == "preflight":

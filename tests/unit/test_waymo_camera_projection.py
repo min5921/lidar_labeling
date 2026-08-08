@@ -116,6 +116,25 @@ class WaymoCameraProjectionTests(unittest.TestCase):
         np.testing.assert_allclose(uv, [[320.0, 240.0]])
         self.assertTrue(valid[0])
 
+    def test_generic_correction_delta_is_applied_before_projection(self) -> None:
+        correction = np.eye(4)
+        correction[1, 3] = 1.0
+        calibration = CameraCalibration.from_generic(
+            "FRONT",
+            {
+                "intrinsic": [[100, 0, 320], [0, 100, 240], [0, 0, 1]],
+                "T_camera_reference": np.eye(4).tolist(),
+                "correction_delta": correction.tolist(),
+                "image_size": [640, 480],
+                "distortion_model": "none",
+            },
+        )
+        uv, valid = calibration.project_vehicle_points(
+            np.array([[10.0, 0.0, 0.0]], dtype=np.float64)
+        )
+        np.testing.assert_allclose(uv, [[310.0, 240.0]])
+        self.assertTrue(valid[0])
+
 
 if __name__ == "__main__":
     unittest.main()

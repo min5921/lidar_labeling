@@ -13,5 +13,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Setup completed. Run launchers\windows\run_windows.bat to start LiDAR Label Tool.
+echo Setup completed.
+echo Run launchers\windows\run_windows.bat for labeling or launchers\windows\run_calibration.bat for calibration editing.
 pause

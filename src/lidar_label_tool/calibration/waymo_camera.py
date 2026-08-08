@@ -61,9 +61,10 @@ class CameraCalibration:
             coefficients = [0.0] * 5
         k1, k2, p1, p2, k3 = coefficients
         width, height = (int(value) for value in data["image_size"])
-        t_camera_reference = np.asarray(
-            data["T_camera_reference"], dtype=np.float64
-        )
+        t_camera_reference = validate_rigid_transform(data["T_camera_reference"])
+        if "correction_delta" in data:
+            correction_delta = validate_rigid_transform(data["correction_delta"])
+            t_camera_reference = correction_delta @ t_camera_reference
         return cls(
             camera_id=camera_id,
             intrinsic=(

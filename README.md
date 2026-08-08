@@ -148,6 +148,22 @@ git pull
 
 이미 변환된 데이터가 있다면 **데이터셋 검사 → 데이터셋 열기** 순서가 가장 안전합니다.
 
+LiDAR 포인트와 3D 박스를 camera image에 투영해 기존 calibration을 미세 조정하거나 새
+calibration 초안을 만들려면 별도 편집기를 실행합니다.
+
+Windows에서는 `launchers/windows/run_calibration.bat`을 더블클릭하고 데이터셋 폴더를
+선택하면 됩니다. Linux에서는 `./launchers/linux/run_calibration.sh`를 실행합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool calibrate C:\data\my_dataset
+```
+
+편집기는 원본 calibration을 덮어쓰지 않고 `calibration/adjusted` 아래의 새 JSON으로만
+저장합니다. 카메라/LiDAR 화면 비율을 조절할 수 있고, 아래 BEV에서 calibration 검증용 3D
+기준 박스를 직접 만든 뒤 카메라 투영을 보며 6DoF와 intrinsic을 맞출 수 있습니다. 기준 박스는
+세션 전용이라 원본/작업 라벨이나 calibration JSON에 저장되지 않습니다. 자세한 조작과 좌표 규칙은
+[사용자 매뉴얼](docs/USER_MANUAL.md)을 확인합니다.
+
 범용 입력 형식과 화면 구성 순서는
 [범용 데이터셋 v2 구성·사용 가이드](docs/33_GENERIC_DATASET_SETUP_GUIDE.md)를 확인합니다.
 `one_chip MCAP/ROS bag 변환`과 기존 결과 재동기화는 특정 자료용 v1 호환 기능이며 범용 입력

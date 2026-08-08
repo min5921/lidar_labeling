@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QPen, QPixmap
+import numpy as np
+from numpy.typing import NDArray
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsPixmapItem,
@@ -25,6 +27,7 @@ class CameraImageView(QGraphicsView):
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._cached_path: Path | None = None
         self._cached_pixmap: QPixmap | None = None
+        self._black_pixmap: QPixmap | None = None
         self._overlay_items: list[QGraphicsItem] = []
         self._selected_rect: QRectF | None = None
         self._focus_selected = False
@@ -40,6 +43,13 @@ class CameraImageView(QGraphicsView):
         camera_id: str = "",
         focus_selected: bool = False,
         box_line_width: float = 2.0,
+        projected_points: NDArray[np.float32] | None = None,
+        comparison_points: NDArray[np.float32] | None = None,
+        comparison_wireframes: Iterable[ProjectedWireframe] = (),
+        projected_point_size: float = 2.0,
+        projected_point_outline: bool = False,
+        show_camera_image: bool = True,
+        preserve_view: bool = False,
     ) -> bool:
         path = Path(path)
         image_changed = path != self._cached_path or self._cached_pixmap is None
@@ -51,22 +61,48 @@ class CameraImageView(QGraphicsView):
             self._overlay_items.clear()
             self._cached_path = path
             self._cached_pixmap = pixmap
-            self._pixmap_item = self._scene.addPixmap(pixmap)
+            self._black_pixmap = QPixmap(pixmap.size())
+            self._black_pixmap.setDevicePixelRatio(pixmap.devicePixelRatio())
+            self._black_pixmap.fill(Qt.GlobalColor.black)
+            initial_pixmap = pixmap if show_camera_image else self._black_pixmap
+            self._pixmap_item = self._scene.addPixmap(initial_pixmap)
         else:
             self._clear_overlays()
+            if self._pixmap_item is not None:
+                updated_pixmap = (
+                    self._cached_pixmap
+                    if show_camera_image
+                    else self._black_pixmap
+                )
+                if updated_pixmap is not None:
+                    self._pixmap_item.setPixmap(updated_pixmap)
         self._selected_rect = None
         self._focus_selected = focus_selected
+        self._draw_projected_points(
+            comparison_points,
+            QColor(255, 80, 200, 215),
+            projected_point_size,
+            projected_point_outline,
+        )
+        self._draw_projected_points(
+            projected_points,
+            QColor(0, 235, 255, 245),
+            projected_point_size,
+            projected_point_outline,
+        )
         self._draw_boxes(camera_labels, QColor(255, 176, 32, 210), box_line_width)
         source_selected_rect = self._draw_projected_boxes(
             projected_labels, selected_object_id, camera_id, box_line_width
         )
+        self._draw_comparison_wireframes(comparison_wireframes, box_line_width)
         live_selected_rect = self._draw_live_wireframes(
             live_wireframes, selected_object_id, box_line_width
         )
         self._selected_rect = live_selected_rect or source_selected_rect
         if self._pixmap_item is not None:
             self._scene.setSceneRect(self._pixmap_item.sceneBoundingRect())
-        self._fit()
+        if image_changed or not preserve_view:
+            self._fit()
         return self._selected_rect is not None
 
     def clear_image(self) -> None:
@@ -74,6 +110,7 @@ class CameraImageView(QGraphicsView):
         self._pixmap_item = None
         self._cached_path = None
         self._cached_pixmap = None
+        self._black_pixmap = None
         self._overlay_items.clear()
         self._selected_rect = None
 
@@ -94,6 +131,62 @@ class CameraImageView(QGraphicsView):
             rectangle = self._rectangle(label)
             if rectangle is not None:
                 self._overlay_items.append(self._scene.addRect(rectangle, pen))
+
+    def _draw_projected_points(
+        self,
+        points: NDArray[np.float32] | None,
+        color: QColor,
+        size: float,
+        outline: bool,
+    ) -> None:
+        if points is None or self._cached_pixmap is None:
+            return
+        array = np.asarray(points)
+        if array.ndim != 2 or array.shape[1] != 2:
+            raise ValueError("projected points must have shape [N, 2]")
+        finite = array[np.isfinite(array).all(axis=1)]
+        if len(finite) == 0:
+            return
+        overlay = QPixmap(self._cached_pixmap.size())
+        overlay.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(overlay)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            point_size = max(1.0, float(size))
+            polygon = QPolygonF(
+                [QPointF(float(point[0]), float(point[1])) for point in finite]
+            )
+            if outline:
+                outline_pen = QPen(QColor(0, 0, 0, 210), point_size + 2.0)
+                outline_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(outline_pen)
+                painter.drawPoints(polygon)
+            pen = QPen(color, point_size)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(pen)
+            painter.drawPoints(polygon)
+        finally:
+            painter.end()
+        self._overlay_items.append(self._scene.addPixmap(overlay))
+
+    def _draw_comparison_wireframes(
+        self,
+        wireframes: Iterable[ProjectedWireframe],
+        line_width: float,
+    ) -> None:
+        pen = QPen(QColor(255, 80, 200, 190), max(1.0, line_width))
+        pen.setStyle(Qt.PenStyle.DashLine)
+        for wireframe in wireframes:
+            for segment in wireframe.segments:
+                self._overlay_items.append(
+                    self._scene.addLine(
+                        float(segment[0, 0]),
+                        float(segment[0, 1]),
+                        float(segment[1, 0]),
+                        float(segment[1, 1]),
+                        pen,
+                    )
+                )
 
     def _draw_projected_boxes(
         self,

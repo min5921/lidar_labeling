@@ -22,6 +22,29 @@ class CliTests(unittest.TestCase):
         self.assertEqual(args.command, "gui")
         self.assertIsNone(args.dataset)
 
+    def test_calibrate_arguments(self) -> None:
+        args = _parser().parse_args(
+            [
+                "calibrate",
+                "dataset",
+                "--profile",
+                "front_profile",
+                "--calibration",
+                "base.json",
+                "--output",
+                "out.json",
+            ]
+        )
+        self.assertEqual(args.command, "calibrate")
+        self.assertEqual(args.profile, "front_profile")
+        self.assertEqual(args.calibration, Path("base.json"))
+        self.assertEqual(args.output, Path("out.json"))
+
+    def test_calibrate_dataset_is_optional_for_folder_picker(self) -> None:
+        args = _parser().parse_args(["calibrate"])
+        self.assertEqual(args.command, "calibrate")
+        self.assertIsNone(args.dataset)
+
     def test_export_arguments(self) -> None:
         args = _parser().parse_args(
             [

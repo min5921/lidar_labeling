@@ -104,6 +104,80 @@ Linux에서 데이터셋 경로를 직접 지정하려면 다음처럼 실행한
 ./launchers/linux/run_linux.sh /data/one_chip_converted
 ```
 
+### LiDAR–카메라 calibration을 화면에서 조정하기
+
+기존 데이터셋 adapter가 연결해 둔 LiDAR frame과 camera image를 그대로 사용하여 별도
+calibration 편집기를 연다.
+
+Windows에서는 프로젝트 폴더의 다음 파일을 더블클릭한다.
+
+```text
+launchers\windows\run_calibration.bat
+```
+
+폴더 선택창이 열리면 `dataset.json` 또는 `schema.json + segment.json`이 바로 아래에 있는
+데이터셋 폴더를 선택한다. Linux에서는 `chmod +x launchers/linux/run_calibration.sh`를 한 번
+실행한 뒤 `./launchers/linux/run_calibration.sh`를 사용한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool calibrate `
+  C:\data\my_dataset
+```
+
+범용 v2 데이터셋에서 profile을 직접 지정하려면 다음과 같이 실행한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool calibrate `
+  C:\data\my_dataset --profile aeva_profile
+```
+
+dataset/profile이 아직 조정본을 가리키지 않는 상태에서 저장했던 JSON을 다시 기준값으로 열려면
+화면의 `기존 Calibration JSON 불러오기`를 누르거나 다음 옵션을 사용한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool calibrate `
+  C:\data\my_dataset --calibration C:\work\front.adjusted.json
+```
+
+- 기존 camera calibration이 있으면 해당 투영 결과를 조정 전 기준값으로 불러온다.
+- calibration이 없으면 현재 이미지 크기로 `fx/fy/cx/cy` 시작값을 추정하고 extrinsic은
+  identity에서 시작한다. 이 intrinsic은 편집 시작용 추정값이지 측정된 calibration이 아니다.
+- X/Y/Z는 m, Roll/Pitch/Yaw는 degree이며 최종 변환은
+  `T_effective = correction_delta @ T_camera_reference`로 계산한다.
+- 미리보기의 camera tool frame은 `+X 전방, +Y 좌측, +Z 위`다. OpenCV optical frame의
+  `+Z 전방, +X 우측, +Y 아래` 행렬은 축 변환 없이 그대로 사용하지 않는다.
+- 상단 `카메라 / LiDAR` 슬라이더로 위·아래 화면 높이 비율을 조절한다. 두 화면 사이의
+  분할선을 직접 드래그해도 슬라이더와 비율 표시가 함께 갱신된다.
+- 아래 LiDAR 영역은 전체 3D와 BEV를 함께 표시한다. 우측 `LiDAR 기준 박스`에서 템플릿을
+  고르고 생성 모드를 켠 뒤, BEV의 point cloud 위를 클릭하면 기본 크기 박스가 생기고
+  드래그하면 length와 width를 직접 정할 수 있다.
+- 기준 박스를 선택하면 노란색으로 강조된다. BEV의 중심/본체를 드래그해 x/y를 옮기고,
+  네 모서리로 length/width를 바꾸며, 전방축 바깥 원형 handle로 yaw를 조절한다. 우측 수치
+  입력으로 x/y/z/length/width/height/yaw를 정확히 고칠 수도 있다.
+- 새 기준 박스의 z는 footprint 안의 LiDAR point로 바닥을 추정한다. 위치나 크기를 바꾼 뒤에는
+  `포인트 바닥에 맞춤`으로 다시 계산할 수 있다.
+- 기준 박스는 calibration 검증용 세션 데이터다. 원본/작업 라벨과 저장하는 calibration JSON에
+  포함되지 않으며 프로그램을 닫으면 사라진다. 기존 3D 라벨은 별도 checkbox로 표시·투영할 수
+  있지만 이 편집기에서는 읽기 전용이다.
+- 청록은 조정 후 LiDAR 포인트, 초록은 조정 후 3D/기준 박스, 분홍 점선은 조정 전 결과다.
+  선택한 기준 박스는 LiDAR와 카메라 화면 모두 노란색으로 보인다.
+- 카메라의 투영 point가 작으면 `카메라 미리보기 레이어 > 투영 점 크기` 슬라이더를 조절한다.
+  1~30 px 범위이며 기본값은 4 px다. 검은 외곽선은 촘촘한 point에서 그림자처럼 이어질 수 있어
+  기본 OFF다. 아주 밝은 배경에서만 `투영 점 검은 외곽선`을 켠다. 이 값은 원본 LiDAR와
+  3D/BEV point 크기를 바꾸지 않는다.
+- `카메라 원본 이미지 표시`를 끄면 이미지 영역이 검정 배경으로 바뀌고 LiDAR point와 3D 박스
+  투영만 남는다. 다시 켜면 같은 확대·이동 위치에서 원본 이미지가 즉시 복원된다.
+- 여러 거리와 화면 위치의 frame을 확인한 뒤 `현재 프레임을 검증 완료로 기록`을 누른다.
+  값을 다시 바꾸면 해당 camera의 검증 목록은 초기화된다.
+- `조정본 Save As`는 원본 calibration을 선택할 수 없으며 기본적으로
+  `calibration/adjusted/<camera>.adjusted.<시각>.json`을 제안한다.
+- 저장은 임시 파일 검증 후 원자적으로 교체하고 기존 조정본이 있으면 `.json.bak` 한 개를
+  남긴다. 저장만으로 dataset/profile의 활성 calibration은 바뀌지 않는다.
+
+현재 미리보기는 pinhole `none`과 `brown_conrady` distortion을 지원한다. `fisheye`는 아직
+지원하지 않는다. 이미지와 LiDAR의 timestamp 차이가 있는 v2 frame은 상태줄에 `Δt`로 표시하며,
+움직이는 객체만 보고 spatial calibration을 맞추지 않는다.
+
 ## 4. `.venv`가 없을 때
 
 `launchers/windows/setup_windows.bat` 또는 `./launchers/linux/setup_linux.sh`를 실행한다.
