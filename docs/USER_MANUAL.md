@@ -449,6 +449,24 @@ dataset/
 Linux에서는 `./.venv/bin/python scripts/verify_source_environment.py`를 사용한다.
 소스 실행 중 처리되지 않은 오류는 run 스크립트를 실행한 terminal에 표시된다.
 
+Windows에서 `DLL load failed while importing QtWidgets` 또는 `지정된 프로시저를 찾을 수
+없습니다`가 표시되면 데이터셋 문제가 아니라 Python/Qt 실행 환경 문제다. 다른 PC에서 `.venv`를
+복사하지 말고 다음 순서로 복구한다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Repair
+```
+
+같은 오류가 계속되면 생성된 가상환경만 새로 만든다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Recreate
+```
+
+그래도 실패하면 `https://aka.ms/vc14/vc_redist.x64.exe`에서 Microsoft Visual C++ x64 runtime을
+설치 또는 복구하고, `winver`에서 Windows 10 1809 이상 또는 Windows 11 x64인지 확인한다.
+`-Recreate`는 `.venv`만 삭제하며 데이터셋과 작업 라벨은 변경하지 않는다.
+
 ### 명시적 라벨 export
 
 일반 저장은 export를 자동 실행하지 않는다. 소스 설치 환경의 PowerShell에서 별도로 실행한다.

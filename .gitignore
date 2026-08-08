@@ -68,6 +68,7 @@ local_data/incoming/*
 # Local Codex/agent metadata; repository instructions remain in AGENTS.md.
 .agents/
 .codex/
+.codex-remote-attachments/
 
 # Editors and IDEs
 .idea/

@@ -8,6 +8,16 @@
 - 최초 설치 또는 의존성 갱신: `windows/setup_windows.bat`
 - 라벨링 도구 실행: `windows/run_windows.bat`
 
+새 PC에서 `QtWidgets` DLL 오류가 발생하면 저장소 루트의 PowerShell에서 다음 순서로 복구한다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Repair
+.\launchers\windows\setup_windows.bat -Recreate
+```
+
+기본 setup도 Qt DLL 검증 실패 시 잠금된 PySide6 runtime을 한 번 자동 복구한다. `-Recreate`는
+프로젝트 안의 생성된 `.venv`만 다시 만들며 데이터셋과 라벨은 건드리지 않는다.
+
 ## Linux
 
 - 최초 설치 또는 의존성 갱신: `linux/setup_linux.sh`

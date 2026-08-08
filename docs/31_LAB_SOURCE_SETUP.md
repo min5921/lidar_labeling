@@ -28,18 +28,33 @@ runtime lock은 기준 최소 버전인 Python 3.10과 일반 개발 버전인 P
 https://github.com/min5921/lidar_labeling.git
 ```
 
-Python은 64-bit 3.10 이상을 설치한다. 처음 환경을 만들 때는 PyPI package 다운로드를 위한
-인터넷 또는 실험실 내부 package mirror가 필요하다.
+Python은 64-bit 3.10 이상을 설치한다. 새 Windows PC의 우선 검증 버전은 64-bit Python
+3.12다. 처음 환경을 만들 때는 PyPI package 다운로드를 위한 인터넷 또는 실험실 내부 package
+mirror가 필요하다. 다른 PC에서 만든 `.venv`는 복사하지 않는다.
 
 ## 3. Windows venv
 
 `launchers/windows/setup_windows.bat`을 더블클릭한다. 스크립트는 다음 작업을 수행한다.
 
-1. Python 3.10 이상 탐색
+1. 64-bit Python 3.12 우선 탐색 후 다른 3.10 이상 Python 탐색
 2. `.venv` 생성
 3. 고정 runtime package 설치
 4. 프로젝트 editable 설치
-5. package 버전과 기본 설정 검증
+5. package 버전, 기본 설정, `PySide6.QtCore/QtGui/QtWidgets` native DLL 검증
+
+Qt DLL 검증이 실패하면 setup은 잠금된 PySide6·Essentials·Addons·shiboken6를 cache 없이 한 번
+강제 재설치하고 다시 검사한다. 기존 환경을 명시적으로 복구하거나 완전히 다시 만들려면 저장소
+루트의 PowerShell에서 다음을 실행한다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Repair
+.\launchers\windows\setup_windows.bat -Recreate
+```
+
+`-Recreate`는 프로젝트 안의 생성물 `.venv`만 삭제한 뒤 다시 만든다. 데이터셋, 작업 라벨,
+설정 파일은 삭제하지 않는다. 그래도 `QtWidgets` DLL 오류가 나면 Microsoft Visual C++ x64
+runtime을 설치 또는 복구하고 `winver`에서 Windows 10 1809 이상 또는 Windows 11 x64인지
+확인한다.
 
 설치 후 `launchers/windows/run_windows.bat`을 더블클릭한다. dataset 경로를 직접 전달할 수도
 있다.
@@ -142,8 +157,9 @@ Linux:
 ./.venv/bin/python -m lidar_label_tool preflight /data/one_chip_converted
 ```
 
-환경 검사는 Python 버전, 모든 고정 runtime package 버전, 프로젝트 import, 기본 설정 JSON을
-검사한다. Preflight는 데이터셋 구조, point/image, sync, calibration과 작업 라벨을 검사한다.
+환경 검사는 Python 버전, 모든 고정 runtime package 버전, 프로젝트 import, 기본 설정 JSON과
+PySide6/Qt native DLL import를 검사한다. Preflight는 데이터셋 구조, point/image, sync,
+calibration과 작업 라벨을 검사한다.
 
 ## 8. 개발 검수
 

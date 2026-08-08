@@ -54,14 +54,16 @@ cd lidar_labeling
 .\launchers\windows\run_windows.bat
 ```
 
-`launchers/windows/setup_windows.bat`은 `.venv`를 만들고 고정된 package를 설치한 뒤 환경을 검증합니다. 마지막에
-`[OK] LiDAR Label Tool source environment verified`가 표시되어야 합니다. 이후 평상시에는
-`launchers/windows/run_windows.bat`만 실행하면 됩니다.
+`launchers/windows/setup_windows.bat`은 `.venv`를 만들고 고정된 package를 설치한 뒤
+PySide6/Qt native DLL까지 검증합니다. 마지막에 `[OK] LiDAR Label Tool source environment
+verified`가 표시되어야 합니다. 이후 평상시에는 `launchers/windows/run_windows.bat`만
+실행하면 됩니다. 새 PC에서 `QtWidgets` DLL 오류가 발생하면 `-Repair`, 이어서 `-Recreate`
+옵션을 사용합니다. 자세한 복구 순서는 [소스 설치 가이드](docs/31_LAB_SOURCE_SETUP.md)에 있습니다.
 
 자동 Python 탐색이 실패하면 위치를 직접 지정합니다.
 
 ```powershell
-.\launchers\windows\setup_windows.bat -PythonCommand C:\Python310\python.exe
+.\launchers\windows\setup_windows.bat -PythonCommand C:\Python312\python.exe
 ```
 
 ## Ubuntu Linux에서 처음 설치
