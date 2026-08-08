@@ -16,7 +16,7 @@
 | D10 | yaw 표시 | UI degree, 내부·JSON radian |
 | D11 | 내부 운영 | Windows/Linux 소스 + 고정 가상환경 |
 | D12 | 운영체제 | Windows 10/11 x64 |
-| D13 | 대상 PC Python | 설치 불필요 |
+| D13 | 대상 PC Python | 현재 source 운영본은 공식 64-bit Python 3.10+ 설치 필요; 새 Windows PC는 python.org Python 3.12 권장 |
 | D14 | 자동 업데이트 | 1차 제외, 수동 새 버전 설치 |
 | D15 | calibration 시작 상태 | `auto`: source frame을 보고 sensor별 필요 여부 판정 |
 | D16 | calibration OFF | transform 미적용; reference-frame 데이터만 병합, sensor-local은 raw 단독 보기 |
@@ -53,6 +53,7 @@ D25는 운영 GUI의 LiDAR 입력에 대해 D15~D17을 대체한다. LiDAR별 ca
 | D36 | v1 호환 | v1은 계속 읽고 새 마법사는 v2만 생성, migration은 명시적·비파괴적으로 수행 |
 | D37 | Dataset taxonomy | v2는 stable `class_id`와 별도 `taxonomy.json`을 사용 |
 | D38 | Recovery와 lock identity | recovery는 frame scope, session lock은 profile/LiDAR namespace scope로 분리 |
+| D39 | 현재 배포 방식 | `codex/v2` source + lock 기반 `.venv`; Python 미설치 portable은 현재 운영 경로 아님 |
 
 상세 규범은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`와 다음 schema를 따른다.
 

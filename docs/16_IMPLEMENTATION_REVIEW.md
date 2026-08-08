@@ -1,7 +1,8 @@
 # 구현 재검수 결과
 
 > 이 문서는 과거 단계의 구현 검토 기록이다. 현재 상태는 `docs/15_IMPLEMENTATION_STATUS.md`,
-> 현재 설치·운영 기준은 `docs/31_LAB_SOURCE_SETUP.md`를 따른다.
+> 현재 설치·운영 기준은 `docs/31_LAB_SOURCE_SETUP.md`를 따른다. 아래 Python 미설치 portable,
+> PyInstaller와 당시 남은 Gate 설명은 역사적 snapshot이며 현재 `codex/v2` 운영 지침이 아니다.
 
 최초 검수일: 2026-07-06
 후속 재검수: 2026-07-10

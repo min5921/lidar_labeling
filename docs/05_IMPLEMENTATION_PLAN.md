@@ -1,5 +1,10 @@
 # 구현 및 검증 계획
 
+> 이 문서는 단계별 구현 순서를 보존한 계획 기록이다. 현재 완료 상태는
+> `docs/15_IMPLEMENTATION_STATUS.md`, 범용 v2의 남은 Gate는
+> `docs/32_GENERIC_DATASET_V2_CONTRACT.md`를 따른다. 현재 운영은 source + 고정 가상환경이며
+> Python 미설치 standalone 패키징은 범위 밖이다.
+
 각 단계는 앞 단계의 테스트가 통과한 뒤 진행한다.
 
 ## Phase 0 — 계약과 개발 기반
@@ -15,7 +20,8 @@
 
 완료 기준: 잘못된 config/label 예제가 예측 가능한 오류를 낸다.
 
-배포 관점 확인: 간단한 PySide6/OpenGL 창을 standalone으로 묶어 Python 미설치 테스트 환경에서 실행한다. 이를 통해 패키징 불가능한 renderer 선택을 초기에 피한다.
+실행 환경 확인: 고정 lock으로 만든 Windows/Linux 가상환경에서 PySide6/OpenGL 창과 native Qt
+DLL import를 검증한다.
 
 ## Phase 1 — 도메인과 geometry
 

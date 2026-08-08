@@ -1,5 +1,9 @@
 # 구현 전 충돌·위험 검수
 
+> 이 문서는 설계 당시 위험과 정정 근거를 보존한다. 현재 규범 계약은
+> `docs/32_GENERIC_DATASET_V2_CONTRACT.md`, 현재 구현 상태는
+> `docs/15_IMPLEMENTATION_STATUS.md`를 우선한다.
+
 검수 기준은 데이터 손상, 좌표/보정 오류, 비동기 상태 충돌, 기존 라벨 호환성, 렌더링 성능, 사용자 실수, 배포 환경이다. 위험도는 P0(구현 전에 설계 고정), P1(첫 사용자 테스트 전 해결), P2(후속 개선)로 구분한다.
 
 ## 검수에서 발견해 바로 정정한 충돌
@@ -224,4 +228,5 @@
 
 ### Gate D — 배포
 
-- Python 미설치 clean Windows에서 OpenGL, 한글/공백 경로, 저장·복구 smoke test 통과
+- 공식 Python 3.12가 설치된 clean Windows에서 setup, OpenGL, 한글/공백 경로, 저장·복구
+  smoke test 통과

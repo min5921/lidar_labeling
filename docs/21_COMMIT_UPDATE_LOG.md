@@ -1,5 +1,9 @@
 # 커밋별 업데이트 기록
 
+> 이 문서는 과거 브랜치와 release 결과를 보존하는 이력 자료다. 아래 Python 미설치 portable과
+> one-file 설명은 현재 설치 방법이 아니다. 현재 `codex/v2`는 python.org 공식 Python과
+> `launchers/`의 source 가상환경을 사용하며 최신 사용법은 루트 `README.md`를 따른다.
+
 이 문서는 프로젝트 진행 중 어떤 커밋에서 무엇이 추가·수정되었는지 추적하기 위한 기록이다.
 기존 one-folder 배포는 `codex/portable-distribution`, 통합 one-file v0.2.0은
 `codex/integrated-desktop-workflows`, Linux portable v0.2.1은 `codex/linux-portable` 브랜치에서

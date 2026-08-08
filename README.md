@@ -1,75 +1,140 @@
 # LiDAR Label Tool
 
-LiDAR point cloud와 좌·우 camera image를 함께 보면서 3D bounding box를 생성·수정·저장하는
-실험실 내부 라벨링 도구입니다. Windows와 Linux 모두 **Python 가상환경에서 소스 실행**하는
-방식을 사용합니다. 별도 EXE/ELF 설치 파일은 현재 운영 경로가 아닙니다.
+LiDAR point cloud를 보면서 3D bounding box를 생성·수정·저장하고, 선택적으로 camera image와
+projection을 함께 확인하는 라벨링 도구입니다.
 
-> **처음 사용하는 분은 먼저 읽어 주세요.**
-> [초보자 설치·실행 가이드 (Word)](docs/LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx)에는
-> Git/Python 설치부터 데이터 변환, 검수, 다른 PC 인수 체크리스트까지 그림과 함께 정리되어 있습니다.
-> 개발 계약과 문서 우선순위는 [문서 안내](docs/README.md)에서 확인할 수 있습니다.
+현재 기본 작업 흐름은 **범용 데이터셋 v2**입니다. 프로그램이 원본 폴더를 분석해
+`dataset.json`, taxonomy와 frame index를 생성하므로 사용자가 JSON을 직접 작성할 필요가
+없습니다. 기존 v1, Waymo와 one_chip 데이터는 호환·레거시 경로로 계속 지원합니다.
 
-![처음 설치부터 데이터 열기까지의 전체 흐름](docs/images/beginner_workflow_ko.png)
+> 현재 개발·검증 브랜치는 `codex/v2`입니다. 새 PC에서는 이 브랜치를 명시해 받으세요.
+> Python이 포함된 EXE 설치본은 아직 제공하지 않으며, 각 PC에 공식 Python을 설치한 뒤
+> 프로젝트의 고정 가상환경으로 실행합니다.
 
-## 지원 환경
+## 핵심 동작 원칙
 
-- Windows 10/11 64-bit 또는 Ubuntu 22.04+
-- Python 3.10 이상 64-bit
-- Git
-- 정상적인 OpenGL 그래픽 드라이버와 데스크톱 화면
-- 최초 package 설치용 인터넷 또는 실험실 내부 wheelhouse
+- 데이터셋에 여러 LiDAR 후보를 등록할 수 있지만, 한 라벨링 profile에서는 LiDAR 하나만
+  사용합니다.
+- 프로그램 안에서 여러 LiDAR를 자동으로 합치지 않습니다. 다른 LiDAR는 별도 profile로 열어
+  독립적으로 라벨링합니다.
+- profile마다 camera는 0개 또는 1개입니다.
+- camera, timestamp 또는 calibration이 없어도 정상 LiDAR frame은 라벨링하고 저장할 수 있습니다.
+- 동기화 실패나 이미지 누락 때문에 LiDAR frame을 제거하지 않습니다.
+- 원본 point, image, timestamp와 source label은 수정하지 않습니다.
+- 작업 라벨은 profile과 LiDAR별 폴더에 원자적으로 저장하므로 같은 frame ID도 서로 덮어쓰지
+  않습니다.
 
-원본 MCAP/YAML, 변환 데이터셋과 작업 라벨은 Git 저장소 밖에 둡니다. Git에는 프로그램 코드와
-문서만 저장합니다.
+## 새 Windows PC에 반드시 필요한 프로그램
 
-## Windows에서 처음 설치
+다음 프로그램은 자동으로 포함되지 않으므로 먼저 설치해야 합니다.
 
-### 1. Git과 Python 설치
+| 필수 항목 | 현재 권장 기준 | 용도 |
+|---|---|---|
+| Windows | Windows 10 1809 이상 또는 Windows 11, 64-bit | Qt GUI 실행 |
+| Git | Git for Windows 최신 안정판 | 소스 내려받기와 업데이트 |
+| Python | **python.org 공식 CPython 3.12 64-bit** | 프로젝트 `.venv` 생성 |
+| 인터넷 | 최초 설치 시 필요 | 고정된 Python package 다운로드 |
+| 그래픽 환경 | OpenGL 지원 driver와 desktop 화면 | 3D point cloud 표시 |
 
-1. [Git for Windows](https://git-scm.com/download/win)를 설치합니다.
-2. [Python for Windows](https://www.python.org/downloads/windows/)에서 공식 CPython 3.12
-   64-bit를 설치합니다. Conda의 `(base)` Python을 `.venv` 생성용으로 사용하지 않습니다.
-3. Python 설치 화면에서 `Add python.exe to PATH`와 Python Launcher 옵션을 켭니다.
-4. 새 PowerShell에서 설치를 확인합니다.
+Python 3.10 이상도 코드상 지원하지만, 새 Windows PC의 우선 검증 버전은 Python 3.12 64-bit입니다.
+
+### Python 설치 시 주의사항
+
+1. [Python 공식 Windows 다운로드](https://www.python.org/downloads/windows/)에서
+   Python 3.12의 `Windows installer (64-bit)`를 받습니다.
+2. 설치 첫 화면에서 `Add python.exe to PATH`를 선택합니다.
+3. `Python Launcher`도 함께 설치합니다.
+4. 설치가 끝나면 열려 있던 PowerShell을 모두 닫고 새 PowerShell을 엽니다.
+5. 다음 명령이 `Python 3.12.x`를 출력하는지 확인합니다.
 
 ```powershell
-git --version
-py -3 --version
+py -3.12 --version
 ```
 
-`py` 명령을 찾을 수 없고 PowerShell 앞에 `(base)`가 표시되면 Conda만 설치된 상태일 수 있다.
-python.org 설치 프로그램에서 Python Launcher 옵션까지 선택한 뒤 새 PowerShell을 연다.
+다음 상태는 공식 Python 설치가 완료된 것으로 보지 않습니다.
 
-### 2. 저장소 내려받기
+- PowerShell에 `(base)`만 표시되고 Conda Python만 설치된 상태
+- `Python was not found ... Microsoft Store` 메시지만 나오는 상태
+- Windows의 App execution alias만 켜져 있는 상태
+- 다른 PC나 다른 폴더에서 `.venv`를 복사한 상태
 
-프로젝트를 둘 폴더에서 PowerShell을 열고 실행합니다.
+Windows용 setup은 Conda의 Qt DLL 충돌을 막기 위해 Conda 환경을 격리합니다. 따라서 `(base)`가
+표시되어 있어도 실행할 수 있지만, `.venv`를 만들 **공식 python.org CPython은 별도로 설치**되어
+있어야 합니다.
+
+## Windows 빠른 설치
+
+### 1. 현재 v2 브랜치 받기
+
+[Git for Windows](https://git-scm.com/download/win)를 설치한 뒤 프로젝트를 둘 폴더에서
+PowerShell을 엽니다.
 
 ```powershell
 cd C:\Lab
-git clone https://github.com/min5921/lidar_labeling.git
+git clone --branch codex/v2 --single-branch https://github.com/min5921/lidar_labeling.git
 cd lidar_labeling
 ```
 
-### 3. 가상환경 설치와 실행
+GitHub에서 ZIP으로 받아도 됩니다. 이때 `pyproject.toml`, `README.md`, `launchers` 폴더가 같이
+보이는 압축 해제 폴더가 프로젝트 루트입니다. 예전에 생성된 `.venv`는 함께 복사하지 않습니다.
+
+### 2. 최초 환경 설치
+
+탐색기에서 `launchers\windows\setup_windows.bat`을 더블클릭하거나 PowerShell에서 실행합니다.
 
 ```powershell
 .\launchers\windows\setup_windows.bat
+```
+
+setup은 다음 작업을 자동으로 수행합니다.
+
+1. 공식 64-bit Python 3.12 우선 탐색
+2. 프로젝트 내부 `.venv` 생성
+3. lock 파일에 고정된 package 설치
+4. 프로젝트 설치
+5. PySide6의 QtCore, QtGui, QtWidgets native DLL까지 실행 검증
+
+설치 마지막에 다음 형식의 메시지가 나오면 정상입니다.
+
+```text
+[OK] LiDAR Label Tool source environment verified (...)
+```
+
+### 3. 프로그램 실행
+
+```powershell
 .\launchers\windows\run_windows.bat
 ```
 
-`launchers/windows/setup_windows.bat`은 `.venv`를 만들고 고정된 package를 설치한 뒤
-PySide6/Qt native DLL까지 검증합니다. 마지막에 `[OK] LiDAR Label Tool source environment
-verified`가 표시되어야 합니다. 이후 평상시에는 `launchers/windows/run_windows.bat`만
-실행하면 됩니다. 새 PC에서 `QtWidgets` DLL 오류가 발생하면 `-Repair`, 이어서 `-Recreate`
-옵션을 사용합니다. 자세한 복구 순서는 [소스 설치 가이드](docs/31_LAB_SOURCE_SETUP.md)에 있습니다.
-
-자동 Python 탐색이 실패하면 위치를 직접 지정합니다.
+평상시에는 setup을 다시 할 필요 없이 `run_windows.bat`만 실행하면 됩니다. 데이터셋 경로를
+직접 넘길 수도 있습니다.
 
 ```powershell
-.\launchers\windows\setup_windows.bat -PythonCommand C:\Python312\python.exe
+.\launchers\windows\run_windows.bat "D:\data\my_dataset"
 ```
 
-## Ubuntu Linux에서 처음 설치
+## 기존 Git 폴더 업데이트
+
+먼저 `git status`에서 사용자가 수정한 코드가 없는지 확인합니다. 원본 데이터와 작업 라벨은
+저장소 밖에 두는 것을 권장합니다.
+
+```powershell
+git fetch origin
+git switch codex/v2
+git pull --ff-only origin codex/v2
+.\launchers\windows\setup_windows.bat
+```
+
+다른 PC에서 가져온 기존 `.venv` 또는 Conda Python으로 만든 `.venv`가 있다면 다음 명령으로
+프로젝트 환경만 새로 만듭니다. 데이터셋과 라벨은 삭제하지 않습니다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Recreate
+```
+
+## Ubuntu Linux 설치
+
+Ubuntu 22.04 이상과 Python 3.10 이상을 지원하며 Python 3.12를 권장합니다.
 
 ```bash
 sudo apt-get update
@@ -78,7 +143,7 @@ sudo apt-get install -y git python3 python3-venv \
 
 mkdir -p ~/lab
 cd ~/lab
-git clone https://github.com/min5921/lidar_labeling.git
+git clone --branch codex/v2 --single-branch https://github.com/min5921/lidar_labeling.git
 cd lidar_labeling
 
 chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
@@ -86,256 +151,258 @@ chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
 ./launchers/linux/run_linux.sh
 ```
 
-다른 Python을 사용하려면 다음처럼 지정합니다.
+특정 Python을 사용하려면 다음처럼 지정합니다.
 
 ```bash
 PYTHON_BIN=python3.12 ./launchers/linux/setup_linux.sh
 ```
 
-SSH만 연결된 서버에는 GUI를 표시할 데스크톱 화면이 없을 수 있습니다. 로컬 desktop session 또는
-그래픽 전달이 올바르게 구성된 환경에서 실행해야 합니다.
+SSH terminal만 있는 서버에서는 GUI가 표시되지 않을 수 있습니다. OpenGL을 사용할 수 있는 로컬
+desktop session 또는 올바르게 구성된 그래픽 전달 환경이 필요합니다.
 
-<details>
-<summary>Conda 환경을 사용하는 경우</summary>
+## 범용 데이터셋 v2 입력 형식
 
-```text
-conda create --name lidar-label-tool python=3.10 pip
-conda activate lidar-label-tool
-python -m pip install -r requirements-bootstrap-lock.txt
-python -m pip install -r requirements-lock.txt
-python -m pip install --no-build-isolation --no-deps -e .
-python scripts/verify_source_environment.py
-python -m lidar_label_tool gui
-```
+### LiDAR
 
-`.venv`와 Conda를 한 실행에서 섞지 않습니다.
+| 형식 | 지원 범위 | 사용자가 확인할 내용 |
+|---|---|---|
+| `.bin` | little-endian dense `float32` | 한 점의 전체 column 순서 |
+| `.pcd` | PCD v0.7 ASCII 또는 uncompressed binary | header의 field와 실제 payload |
 
-</details>
+모든 LiDAR에는 `x`, `y`, `z`가 필요합니다. BIN은 일반적으로 column 이름을 파일 내부에 저장하지
+않으므로 프로그램이 임의로 의미를 추측하지 않습니다. 예를 들어 한 점이
+`x, y, z, intensity, reflectivity, velocity` 순서라면 구성 화면에 그 전체 순서를 정확히
+입력해야 합니다.
 
-## 평상시 실행과 업데이트
+LiDAR 후보가 여러 개라면 센서별로 폴더를 분리하는 것을 권장합니다.
 
-Windows:
+### Camera
 
-```powershell
-.\launchers\windows\run_windows.bat
-```
+- 지원 형식: `.jpg`, `.jpeg`, `.png`
+- 한 profile에 camera는 없음 또는 한 개만 선택합니다.
+- 좌·우 영상이 이미 합성·보정된 이미지라면 논리 camera 한 개로 사용할 수 있습니다.
+- 이미지가 있다는 사실만으로 3D projection calibration이 있다고 간주하지 않습니다.
 
-Linux:
+### Timestamp와 동기화
 
-```bash
-./launchers/linux/run_linux.sh
-```
+다음 세 방식 중 하나를 선택합니다.
 
-이미 clone한 저장소를 업데이트할 때는 작업 라벨을 백업하고 다음 순서로 실행합니다.
+| 방식 | 필요한 입력 | 동작 |
+|---|---|---|
+| LiDAR만 사용 | LiDAR 파일 | 모든 LiDAR frame을 유지하고 camera를 연결하지 않음 |
+| 같은 파일 stem | LiDAR와 image | `000001.bin`과 `000001.jpg`처럼 stem이 같은 파일 연결 |
+| 가장 가까운 timestamp | LiDAR CSV와 camera CSV | tolerance 안에서 가장 가까운 image 연결 |
 
-```text
-git status
-git pull
-```
+Timestamp CSV를 사용할 때 구성 화면의 항목은 다음 뜻입니다.
 
-업데이트 후 Windows는 `launchers/windows/setup_windows.bat`, Linux는
-`./launchers/linux/setup_linux.sh`를 다시 실행하여 package와
-프로젝트 설치를 현재 commit에 맞춥니다. `git status`에 수정 파일이 있으면 먼저 변경 내용을
-확인하고 무조건 덮어쓰지 않습니다.
-
-## 첫 화면에서 선택할 작업
-
-경로 없이 run script를 실행하면 통합 작업 선택 화면이 열립니다.
-
-| 작업 | 언제 사용하는가 |
+| 항목 | 의미 |
 |---|---|
-| 데이터 폴더/데이터셋 열기 | 기존 데이터셋을 열거나, JSON이 없는 LiDAR 폴더를 범용 v2로 구성합니다. |
-| 범용 v2 재동기화 | 변경 내용을 먼저 분석하고 새 frame-index generation을 원자적으로 적용합니다. |
-| 데이터셋 검사 | point·image·sync·calibration·label을 읽기 전용 검사합니다. |
-| 라벨 통계 | source/working label 수와 class 분포를 확인합니다. |
-| 라벨 내보내기 | 일반 저장과 분리된 명시적 export를 실행합니다. |
-| 고급 도구 — one_chip 레거시 | 특정 `calibration + rosbags` 입력의 변환·재동기화·검증을 보존합니다. |
+| Sample ID 컬럼 | CSV 행을 point/image 파일 stem과 연결하는 열 |
+| Timestamp 컬럼 | 실제 동기화 계산에 사용할 정수 시간 열 |
+| Timestamp 단위 | CSV 숫자의 단위: `ns`, `us`, `ms`, `s` |
+| Clock domain | 시간 기준의 identity: 예를 들면 `bag`, `header`, `device` |
+| Nearest tolerance | 두 sensor sample을 같은 frame으로 허용할 최대 시간 차이 |
 
-이미 변환된 데이터가 있다면 **데이터셋 검사 → 데이터셋 열기** 순서가 가장 안전합니다.
+두 sensor는 같은 clock domain을 사용해야 합니다. clock domain은 단위 변환이나 시간 offset이
+아니며, 서로 다른 clock을 프로그램이 조용히 연결하지 않습니다. 내부 계산은 정수 nanosecond
+정밀도를 유지합니다.
 
-LiDAR 포인트와 3D 박스를 camera image에 투영해 기존 calibration을 미세 조정하거나 새
-calibration 초안을 만들려면 별도 편집기를 실행합니다.
+CSV 예시는 다음과 같습니다.
 
-Windows에서는 `launchers/windows/run_calibration.bat`을 더블클릭하고 데이터셋 폴더를
-선택하면 됩니다. Linux에서는 `./launchers/linux/run_calibration.sh`를 실행합니다.
-
-```powershell
-.\.venv\Scripts\python.exe -m lidar_label_tool calibrate C:\data\my_dataset
+```csv
+sample_id,timestamp_ns
+000000,1778225784354747202
+000001,1778225784454747202
 ```
 
-편집기는 원본 calibration을 덮어쓰지 않고 `calibration/adjusted` 아래의 새 JSON으로만
-저장합니다. 카메라/LiDAR 화면 비율을 조절할 수 있고, 아래 BEV에서 calibration 검증용 3D
-기준 박스를 직접 만든 뒤 카메라 투영을 보며 6DoF와 intrinsic을 맞출 수 있습니다. 기준 박스는
-세션 전용이라 원본/작업 라벨이나 calibration JSON에 저장되지 않습니다. 자세한 조작과 좌표 규칙은
-[사용자 매뉴얼](docs/USER_MANUAL.md)을 확인합니다.
+### 권장 원본 폴더 예시
 
-범용 입력 형식과 화면 구성 순서는
-[범용 데이터셋 v2 구성·사용 가이드](docs/33_GENERIC_DATASET_SETUP_GUIDE.md)를 확인합니다.
-`one_chip MCAP/ROS bag 변환`과 기존 결과 재동기화는 특정 자료용 v1 호환 기능이며 범용 입력
-기능이 아닙니다.
-
-## 데이터 폴더 구조
-
-![원본 취득 데이터와 변환 데이터셋 구조](docs/images/data_hierarchy_ko.png)
-
-원본 `one_chip`은 다음 구조를 사용합니다.
+폴더명이 반드시 아래와 같을 필요는 없지만, 센서별로 분리하면 자동 탐색 결과를 확인하기 쉽습니다.
 
 ```text
-one_chip/
-├─ calibration/
-│  └─ results/
-│     └─ apriltag_calib_main_02/
-│        ├─ cam_left_intrinsics.yaml
-│        ├─ cam_right_intrinsics.yaml
-│        ├─ stereo_left_right.yaml
-│        ├─ cam_left_lidar_extrinsics.yaml
-│        ├─ cam_right_lidar_extrinsics.yaml
-│        └─ lidar_camera_calibration_summary.yaml
-└─ rosbags/
-   └─ <session>/
-      ├─ lidar/lidar_0.mcap
-      ├─ cam_left/cam_left_0.mcap
-      └─ cam_right/cam_right_0.mcap
+my_dataset/
+├─ lidar/
+│  ├─ AEVA/
+│  │  ├─ 000000.bin
+│  │  └─ 000001.bin
+│  └─ LIDAR_POINTS/
+│     ├─ 000000.bin
+│     └─ 000001.bin
+├─ camera/
+│  └─ HEAD_CAMERA/
+│     ├─ 000000.jpg
+│     └─ 000001.jpg
+├─ timestamps/
+│  ├─ AEVA.csv
+│  ├─ LIDAR_POINTS.csv
+│  └─ HEAD_CAMERA.csv
+└─ calibration/                 # 선택 사항
 ```
 
-현재 기본 변환 결과는 다음처럼 단순한 실제 폴더명을 사용합니다.
+## 프로그램에서 처음 데이터셋 구성
+
+1. `run_windows.bat` 또는 `run_linux.sh`를 실행합니다.
+2. 첫 화면에서 `데이터 폴더/데이터셋 열기`를 선택합니다.
+3. `dataset.json`이 없는 원본 데이터 폴더를 선택합니다.
+4. 탐색된 LiDAR 후보 중 사용할 센서를 하나 이상 선택합니다.
+5. 각 LiDAR의 point columns와 coordinate frame을 입력합니다.
+6. `meter / x-forward / y-left / z-up / +z yaw` 계약을 확인합니다.
+7. camera는 없음 또는 한 개를 선택합니다.
+8. 동기화 방식과 필요한 timestamp 설정을 입력합니다.
+9. 원본 폴더가 읽기 전용이면 `구성/라벨 폴더`를 별도의 쓰기 가능한 위치로 선택합니다.
+10. `구성 분석`에서 frame 수, match/unmatched, camera reuse와 최대 시간 차이를 확인합니다.
+11. 결과가 맞으면 `검증 결과로 생성`을 누릅니다.
+
+분석 단계에서는 파일을 생성하지 않습니다. 분석 후 설정이나 원본이 바뀌면 다시 분석해야 하며,
+schema·payload·frame binding 검사를 통과한 결과만 활성화합니다. 실패하거나 취소하면 기존 구성과
+원본은 그대로 유지됩니다.
+
+## 생성되는 파일
 
 ```text
-one_chip_converted/
+<configuration-root>/
 ├─ dataset.json
-├─ conversion_report.json
-├─ lidar/*.bin
-├─ cam_left/*.jpg
-├─ cam_right/*.jpg
-├─ sync/frames.jsonl
-├─ calibration/calibration.json
-└─ annotations/lidar_label_tool/*.json   # 라벨 저장 후 생성
+├─ generations/
+│  └─ generation-000001/
+│     ├─ taxonomy.json
+│     └─ sync/
+│        ├─ aeva_profile.frames.jsonl
+│        └─ lidar_points_profile.frames.jsonl
+└─ annotations/
+   └─ lidar_label_tool/
+      ├─ aeva_profile/aeva/<frame_id>.json
+      └─ lidar_points_profile/lidar_points/<frame_id>.json
 ```
 
-`MERGED`, `CAM_LEFT`, `CAM_RIGHT`는 `dataset.json` 안의 논리 sensor ID입니다. GUI에서는
-**`dataset.json`이 직접 들어 있는 `one_chip_converted` 폴더**를 선택합니다. ZIP, 원본
-`one_chip`, `rosbags` 하위 폴더 또는 그 상위 폴더를 데이터셋으로 선택하면 안 됩니다.
+- `dataset.json`: sensor, profile, 좌표계와 현재 활성 generation을 기록하는 manifest
+- `*.frames.jsonl`: LiDAR frame 순서와 선택적 camera 연결을 확정한 index
+- `taxonomy.json`: 안정적인 class ID, 표시 이름, 색상과 기본 box 크기
+- `annotations/...`: profile과 LiDAR별로 분리된 작업 라벨
 
-## 원본 one_chip 변환
+이 파일들은 프로그램이 생성하고 검증합니다. 일반 사용자가 직접 편집할 필요가 없습니다.
 
-MCAP/ROS2 bag은 GUI에서 직접 열 수 없습니다. 통합 화면의 `원본 데이터 변환`을 선택하는 방법을
-권장합니다.
+## 여러 LiDAR를 사용하는 방법
 
-1. Source: `calibration`과 `rosbags`가 함께 있는 `one_chip` 루트
-2. Calibration: `results/apriltag_calib_main_02`
-3. Output: 기존 폴더와 겹치지 않는 새 `one_chip_converted` 경로
-4. Timestamp source: 현재 one_chip 취득본은 `header_aligned`
-5. Sync tolerance: `70 ms`
-6. 완료 후 자동 Preflight 결과 확인
+초기 구성에서 여러 LiDAR를 선택하면 LiDAR마다 독립 profile이 생성됩니다. 데이터셋을 열 때 이번
+세션에서 사용할 profile 하나를 선택합니다. 다른 LiDAR로 작업하려면 데이터셋을 다시 열고 다른
+profile을 선택합니다.
 
-CLI로 실행할 때는 경로를 자유롭게 바꿀 수 있습니다.
+이미 데이터셋을 만든 뒤 새 LiDAR를 추가할 때는 삭제하고 다시 만들 필요가 없습니다.
 
-```powershell
-.\.venv\Scripts\python.exe scripts\convert_one_chip_dataset.py `
-  --source E:\one_chip `
-  --output E:\one_chip_converted `
-  --timestamp-source header_aligned `
-  --sync-tolerance-ms 70
-```
+1. 첫 화면에서 `범용 v2 LiDAR profile 추가`를 선택합니다.
+2. 기존 `dataset.json`이 있는 구성 폴더를 선택합니다.
+3. 새 LiDAR의 columns, coordinate frame과 sync 설정을 확인합니다.
+4. `변경 분석` 결과를 확인한 뒤 `새 profile 추가`를 실행합니다.
 
-변환기는 기존 output 폴더가 있으면 중단합니다. 기존 결과를 직접 덮어쓰지 말고 날짜를 붙여
-이름을 바꾸거나 백업한 뒤 새 output을 지정합니다.
+기존 dataset ID, profile, generation과 라벨은 보존됩니다.
 
-## 재동기화만 다시 하기
+## 범용 v2 재동기화
 
-카메라가 몇 frame 동안 멈춘 뒤 점프해 보이면 image를 다시 추출하기 전에
-`sync/frames.jsonl`의 timestamp matching을 확인합니다.
+이미지 연결 방식이나 tolerance를 바꾸려면 첫 화면의 `범용 v2 재동기화`를 사용합니다. 이 기능은
+point와 image 원본을 변환하지 않고 새 frame-index generation만 만들어 원자적으로 활성화합니다.
+LiDAR frame의 ID, 순서와 point 경로는 변경하지 않으며 이전 generation과 라벨도 보존합니다.
 
-1. 기존 `sync/frames.jsonl`을 백업합니다.
-2. 통합 화면의 `기존 데이터 재동기화`를 사용하거나 아래 명령을 실행합니다.
-3. 알려진 문제 구간에서 camera sample이 자연스럽게 증가하는지 확인합니다.
+## 데이터 검사와 CLI
 
-```powershell
-.\.venv\Scripts\python.exe scripts\convert_one_chip_dataset.py `
-  --source E:\one_chip `
-  --output E:\one_chip_converted `
-  --sync-only-existing `
-  --timestamp-source header_aligned `
-  --sync-tolerance-ms 70
-```
-
-## 데이터셋 검사와 열기
+GUI 첫 화면의 `데이터셋 검사`를 권장합니다. CLI로도 읽기 전용 검사를 실행할 수 있습니다.
 
 Windows:
 
 ```powershell
-.\.venv\Scripts\python.exe -m lidar_label_tool preflight E:\one_chip_converted
-.\launchers\windows\run_windows.bat E:\one_chip_converted
+.\.venv\Scripts\python.exe -m lidar_label_tool validate-v2 "D:\data\dataset_config"
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight "D:\data\dataset_config"
 ```
 
 Linux:
 
 ```bash
-./.venv/bin/python -m lidar_label_tool preflight /data/one_chip_converted
-./launchers/linux/run_linux.sh /data/one_chip_converted
+./.venv/bin/python -m lidar_label_tool validate-v2 /data/dataset_config
+./.venv/bin/python -m lidar_label_tool preflight /data/dataset_config
 ```
 
-Preflight 종료 코드는 다음과 같습니다.
-
-- `0`: error와 warning 없음
-- `1`: warning 있음; 원인을 확인한 뒤 일부 데이터로 작업 가능할 수 있음
-- `2`: error 있음; 누락·손상 원인을 먼저 수정
-
-데이터를 연 뒤 frame 수, `MERGED`, `CAM_LEFT/CAM_RIGHT`, 작업 저장 위치, calibration 상태를
-확인합니다. 좌·우 camera projection이 정지 구조물의 모서리에 맞는지도 함께 확인합니다.
+검사 종료 코드는 `0` 정상, `1` warning, `2` error입니다. warning은 내용을 확인한 뒤 LiDAR 작업을
+계속할 수 있는 경우가 있지만 error는 먼저 수정해야 합니다.
 
 ## 라벨링과 저장 안전
 
-- 기존 객체는 객체 목록, 전체 3D 또는 BEV 박스를 클릭해 선택합니다.
-- 새 박스는 `새 박스 만들기`를 누르고 BEV에서 위치와 크기를 지정합니다.
-- BEV에서 x/y, length/width, yaw를 편집하고 SideView에서 z/height를 편집합니다.
-- `Ctrl+S`로 저장하고 frame을 다시 열어 ID, class와 box 값이 유지되는지 확인합니다.
-- 일반 저장은 원본 source label을 덮어쓰지 않습니다.
-- 작업 라벨은 기본적으로 아래 경로에 저장됩니다.
+- `Ctrl+S`로 현재 frame의 작업 라벨을 저장합니다.
+- source label은 먼저 불러올 수 있지만 일반 저장으로 원본을 덮어쓰지 않습니다.
+- 저장 전 revision과 fingerprint를 비교하여 다른 프로그램의 변경을 조용히 덮어쓰지 않습니다.
+- 임시 파일 검증과 atomic replace를 사용하고 직전 `.bak`을 유지합니다.
+- camera 또는 calibration 문제는 projection만 비활성화하며 LiDAR 라벨 저장은 계속할 수 있습니다.
+- export는 일반 저장과 분리되어 있으며 첫 화면의 `라벨 내보내기`에서 명시적으로 실행합니다.
 
-```text
-<dataset>/annotations/lidar_label_tool/<frame_id>.json
-<dataset>/annotations/lidar_label_tool/<frame_id>.json.bak
-<dataset>/annotations/lidar_label_tool/.recovery/
+상세 조작법은 [GUI 사용자 매뉴얼](docs/USER_MANUAL.md)을 확인하세요.
+
+## LiDAR–camera calibration 편집기
+
+Windows:
+
+```powershell
+.\launchers\windows\run_calibration.bat
 ```
 
-라벨 export는 일반 저장과 분리되어 있습니다. 필요한 출력 형식은 통합 화면의 `라벨 내보내기`에서
-명시적으로 실행합니다.
+Linux:
 
-## Calibration 확인
+```bash
+./launchers/linux/run_calibration.sh
+```
 
-- reference frame은 `robosense` 또는 LiDAR 기준이어야 합니다.
-- `MERGED` LiDAR transform은 identity입니다.
-- `CAM_LEFT/CAM_RIGHT`의 `T_camera_reference`는 LiDAR에서 camera로 가는 transform입니다.
-- `plumb_bob` distortion은 `brown_conrady`로 매핑합니다.
-- JSON 구조 검증만으로 실제 정렬이 보장되지는 않으므로 좌·우 projection을 반드시 눈으로 확인합니다.
+편집기는 point와 3D box를 camera image에 투영하면서 6DoF와 intrinsic을 조정할 수 있습니다.
+원본 calibration을 덮어쓰지 않고 `calibration/adjusted` 아래의 새 JSON으로 저장합니다. 조정본을
+저장하는 것만으로 dataset profile의 활성 calibration이 자동 변경되지는 않습니다.
 
-## 프로그램 저장소 구조
+## one_chip 레거시 기능
 
-![Git으로 받는 프로그램 저장소 구조](docs/images/repository_hierarchy_ko.png)
+다음 기능은 특정 `calibration + rosbags` 취득 구조 전용이며 범용 데이터셋을 만들 때 사용하지
+않습니다.
 
-`.venv`, 원본 데이터, 변환 데이터와 작업 라벨은 Git에 포함하지 않습니다. 다른 source/output 경로는
-GUI에서 선택하거나 `scripts/convert_one_chip_dataset.py` 상단의 `User-editable defaults`를
-수정할 수 있습니다.
+- one_chip MCAP/ROS bag 변환
+- one_chip 기존 결과 재동기화
+- one_chip Calibration JSON 생성·검증
+
+첫 화면의 접힌 `고급 도구 — one_chip 레거시 전용` 영역에 보존되어 있습니다. 필요한 경우
+[one_chip 변환 매뉴얼](docs/20_ONE_CHIP_CONVERSION_MANUAL.md)을 따르세요.
 
 ## 자주 발생하는 문제
 
-| 증상 | 확인할 내용 |
+| 증상 | 원인과 해결 |
 |---|---|
-| `git`을 찾지 못함 | Git 설치 후 기존 terminal을 모두 닫고 새로 엽니다. |
-| Python을 찾지 못함 | Python 64-bit와 PATH/Launcher 옵션을 확인하거나 setup에 실행 경로를 지정합니다. |
-| setup package 다운로드 실패 | 인터넷·proxy·방화벽 또는 같은 OS/Python용 wheelhouse를 확인합니다. |
-| Linux Qt xcb/OpenGL 오류 | 위의 apt package, GPU driver와 desktop session을 확인합니다. |
-| 데이터셋을 열 수 없음 | 선택 폴더 바로 아래의 `dataset.json`과 Preflight 결과를 확인합니다. |
-| 카메라가 반복·점프함 | image 재추출 전에 timestamp source와 `sync/frames.jsonl`을 재검수합니다. |
-| projection이 어긋남 | camera layer, transform 방향, distortion, sync delta와 움직이는 객체 여부를 확인합니다. |
+| `Official 64-bit CPython ... was not found` | python.org의 Python 3.12 64-bit와 Python Launcher를 설치하고 새 PowerShell에서 `py -3.12 --version`을 확인합니다. |
+| `Python was not found ... Microsoft Store` | 공식 Python이 없고 실행 alias만 활성화된 상태입니다. Microsoft Store 안내 대신 python.org installer를 사용합니다. |
+| `(base)`가 표시됨 | 최신 launcher가 Conda Qt 경로를 격리하므로 표시 자체는 괜찮습니다. 다만 공식 Python은 별도로 필요합니다. |
+| 기존 `.venv`가 Conda 기반이라고 나옴 | `.\launchers\windows\setup_windows.bat -Recreate`를 실행합니다. |
+| `QtCore` 또는 `QtWidgets` DLL load failed | 먼저 `setup_windows.bat -Repair`, 계속 실패하면 `-Recreate`를 실행합니다. 이후 Microsoft Visual C++ x64 runtime과 Windows 버전을 확인합니다. |
+| `adapter_open_failed: expected dataset.json ...` | 최신 `codex/v2`를 사용하고 첫 화면에서 JSON이 없는 원본 폴더를 선택해 범용 구성 마법사를 실행합니다. JSON을 손으로 만들지 않습니다. |
+| 구성 생성 버튼이 비활성화됨 | 선택한 모든 LiDAR의 전체 point columns와 좌표 계약 확인 여부를 점검하고 `구성 분석`을 다시 실행합니다. |
+| timestamp match가 0개임 | 두 CSV의 sample ID/timestamp 컬럼, 단위, clock domain과 tolerance를 확인합니다. |
+| 다른 LiDAR로 라벨링하고 싶음 | 데이터셋을 다시 열어 다른 profile을 선택하거나 `범용 v2 LiDAR profile 추가`를 사용합니다. |
+| package 다운로드 실패 | 인터넷, proxy, 방화벽 또는 같은 OS/Python용 내부 wheelhouse를 확인합니다. |
 
-## 상세 매뉴얼
+Qt DLL 오류가 계속되면 [Microsoft Visual C++ x64 Runtime](https://aka.ms/vc14/vc_redist.x64.exe)을
+설치 또는 복구하고 `winver`에서 Windows 10 1809 이상 또는 Windows 11 x64인지 확인합니다.
+
+## 저장소 구조
+
+```text
+lidar_labeling/
+├─ launchers/       # 사용자용 Windows/Linux 설치·실행 파일
+├─ src/             # 애플리케이션, domain, service, adapter, UI
+├─ schemas/         # dataset/label/calibration JSON Schema
+├─ configs/         # 기본 프로그램 설정
+├─ scripts/         # 변환·검증·개발 보조 스크립트
+├─ tests/           # 단위·통합 테스트
+└─ docs/            # 계약, 설치, 사용 및 검수 문서
+```
+
+`.venv`, 원본 데이터, 생성된 dataset, 작업 라벨과 export 결과는 Git에 포함하지 않습니다.
+
+## 상세 문서
 
 - [문서 전체 안내와 우선순위](docs/README.md)
-- [초보자 설치·실행 가이드 (Word)](docs/LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx)
+- [Windows/Linux 소스 설치와 복구](docs/31_LAB_SOURCE_SETUP.md)
+- [범용 데이터셋 v2 구성·사용 가이드](docs/33_GENERIC_DATASET_SETUP_GUIDE.md)
 - [GUI 사용자 매뉴얼](docs/USER_MANUAL.md)
-- [one_chip 변환 매뉴얼](docs/20_ONE_CHIP_CONVERSION_MANUAL.md)
+- [범용 데이터셋 v2 확정 계약](docs/32_GENERIC_DATASET_V2_CONTRACT.md)
 - [Preflight와 QA](docs/18_PREFLIGHT_AND_QA.md)
-- [실제 데이터 Trial Run](docs/19_TRIAL_RUN_MANUAL.md)
-- [Windows/Linux 소스 환경 설치](docs/31_LAB_SOURCE_SETUP.md)
+- [one_chip 변환 매뉴얼](docs/20_ONE_CHIP_CONVERSION_MANUAL.md)

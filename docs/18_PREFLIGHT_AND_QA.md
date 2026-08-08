@@ -11,19 +11,25 @@
 사람이 읽는 출력:
 
 ```powershell
-lidar-label-tool preflight <dataset>
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight <dataset>
 ```
 
 자동화용 JSON 출력:
 
 ```powershell
-lidar-label-tool preflight <dataset> --json
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight <dataset> --json
 ```
 
 별도 workspace를 사용한다면 다음처럼 지정한다.
 
 ```powershell
-lidar-label-tool preflight <dataset> --workspace <workspace-root> --json
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight <dataset> --workspace <workspace-root> --json
+```
+
+범용 v2의 manifest/index/taxonomy 계약만 빠르게 읽기 전용 검사하려면 다음 명령을 사용할 수 있다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool validate-v2 <configuration-root> --json
 ```
 
 종료 코드는 다음과 같다.
@@ -87,6 +93,10 @@ GUI에서 error가 있어도 사용 가능한 LiDAR 프레임이 남아 있으�
 
 ## Calibration 상태
 
+아래 sensor 상태는 기존 v1/Waymo/device-centric adapter의 LiDAR transform 표시에 사용한다.
+범용 v2는 profile의 label-ready LiDAR 한 개를 그대로 사용하며 다른 LiDAR와 합치지 않는다.
+v2 camera calibration이 없거나 손상되면 `calibrated` projection만 끄고 LiDAR 편집은 유지한다.
+
 - `not_required`: 포인트가 이미 dataset reference frame에 있음
 - `applied`: 유효한 transform으로 reference frame에 변환 가능
 - `missing`: 필요한 transform 또는 calibration 파일 없음
@@ -101,14 +111,14 @@ GUI에서 error가 있어도 사용 가능한 LiDAR 프레임이 남아 있으�
 Source label만 집계:
 
 ```powershell
-lidar-label-tool stats <dataset>
-lidar-label-tool stats <dataset> --json
+.\.venv\Scripts\python.exe -m lidar_label_tool stats <dataset>
+.\.venv\Scripts\python.exe -m lidar_label_tool stats <dataset> --json
 ```
 
 Working label만 집계:
 
 ```powershell
-lidar-label-tool stats <dataset> --working
+.\.venv\Scripts\python.exe -m lidar_label_tool stats <dataset> --working
 ```
 
 `--working`에서 working JSON이 없는 프레임은 객체 0개, `unvisited`로 계산한다. 현재 내부 상태의

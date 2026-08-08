@@ -4,16 +4,17 @@
 작업 라벨 identity의 확정 계약이다. 기존 `dataset.json` 1.0과 Waymo 호환 adapter는
 읽기 호환을 위해 유지하지만, 새 데이터셋 구성 마법사는 이 문서의 2.0 형식만 생성한다.
 
-현재 구현 범위는 v2 schema, immutable domain model, reader와 읽기 전용 semantic validator다.
-다음 명령으로 원본을 수정하지 않고 v2 구성을 검사할 수 있다.
+현재 구현에는 v2 schema/domain/reader/semantic validator뿐 아니라 폴더 discovery, 구성 마법사,
+deterministic sync, runtime adapter, profile별 label repository, profile 추가와 generation 기반
+재동기화가 연결되어 있다. 다음 명령으로 원본을 수정하지 않고 v2 구성을 검사할 수 있다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool validate-v2 C:\data\my_dataset --json
 ```
 
 종료 코드는 `0`(정상), `1`(LiDAR 작업을 막지 않는 warning), `2`(계약 위반 error)다.
-구성 마법사, deterministic sync 생성, v2 runtime adapter, profile별 라벨 저장과 generation 기반
-재동기화까지 연결되었다. 실제 장비 데이터와 clean PC 인증은 별도 운영 Gate로 계속 추적한다.
+실제 장비 데이터와 공식 Python 3.12 기반 clean Windows PC 인증은 별도 운영 Gate로 계속
+추적한다.
 
 ## 1. 규범 용어
 

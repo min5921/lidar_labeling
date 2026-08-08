@@ -1,22 +1,22 @@
 # LiDAR Label Tool 사용자 매뉴얼
 
-이 문서는 현재 개발 PC에서 샘플 데이터셋을 열고, 기존 객체를 확인·수정·저장하는 방법을 설명한다.
+이 문서는 범용 v2 또는 호환 데이터셋을 열고, 기존 객체를 확인·수정·저장하는 방법을 설명한다.
 실제 데이터로 한 바퀴 써보며 피드백을 남기는 절차는 `docs/19_TRIAL_RUN_MANUAL.md`를 따른다.
 
 ## 1. 현재 지원 범위
 
-- 현재 제공된 Waymo-style `frame_000`, `frame_001` 구조
-- 단일 merged `.bin`/`.pcd` LiDAR와 `.jpg/.jpeg/.png` camera image
-- 기존 `laser_labels.json`, `camera_labels.json`, `projected_lidar_labels.json`
-- 기존 3D 박스 수정, 새 박스 추가, 삭제, Undo/Redo, 작업 JSON 저장
-- camera calibration을 이용한 현재 3D 박스 실시간 투영
-- `dataset.json` 기반 `MERGED/000000.bin`, `000001.bin` 입력
 - JSON이 없는 `.bin`/`.pcd` 폴더 자동 탐색과 범용 v2 구성
 - 여러 LiDAR 후보의 독립 profile, 카메라 0~1개, exact/timestamp-nearest index 생성
 - profile/LiDAR별 v2 작업 라벨, 외부 workspace, 분석 후 generation 재동기화
+- 기존 3D 박스 수정, 새 박스 추가, 삭제, Undo/Redo, 작업 JSON 저장
+- camera calibration을 이용한 현재 3D 박스 실시간 투영
+- 기존 v1 `MERGED` device-centric 입력과 Waymo-style `frame_000`, `frame_001` 호환
+- 기존 `laser_labels.json`, `camera_labels.json`, `projected_lidar_labels.json` 호환
 
 현재 실험실 운영본은 Windows와 Linux 모두 소스 가상환경에서 실행한다. 각 PC에는 Python 3.10
-이상이 필요하지만 ROS2, MCAP SDK, PySide6 등을 따로 찾아 설치할 필요는 없다.
+이상 64-bit가 필요하며 새 Windows PC에는 python.org 공식 Python 3.12 64-bit를 권장한다.
+Conda Python만으로 Windows `.venv`를 만들지 않는다. ROS2, MCAP SDK, PySide6 등을 사용자가
+따로 찾아 설치할 필요는 없다.
 `requirements-lock.txt`와 OS별 setup 스크립트가 필요한 Python package를 프로젝트 가상환경에
 설치한다.
 
@@ -52,18 +52,11 @@ chmod +x launchers/linux/setup_linux.sh launchers/linux/run_linux.sh
 one_chip 원본 변환·검증은 `고급 도구 — one_chip 레거시 전용`에 분리되어 있다. 사용자 설정은
 Windows의 AppData 또는 Linux의 XDG 사용자 경로에 저장된다.
 
-전체 변환된 merged 샘플을 바로 열려면 `launchers/legacy/run_merged_sample.bat`을
-더블클릭한다.
-
 다른 데이터를 선택하려면:
 
-1. `C:\Users\USER\Desktop\Labelling_tool` 폴더를 연다.
+1. Git으로 받은 프로젝트 폴더를 연다.
 2. `launchers/windows/run_windows.bat`을 더블클릭한다.
-3. 폴더 선택 창에서 다음 샘플 폴더를 선택한다.
-
-```text
-C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
-```
+3. 폴더 선택 창에서 실제 원본 또는 구성 폴더를 선택한다.
 
 기존 데이터셋은 선택하는 폴더 바로 아래에 `dataset.json`이 있어야 한다. `dataset.json`이 없는
 일반 LiDAR 폴더를 선택하면 범용 구성 화면이 열리며, point columns·좌표계·선택적 camera와
@@ -72,8 +65,12 @@ timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA�
 `schema.json + segment.json + frame_000` 샘플도 호환 adapter로 계속 열 수 있다. 자세한 구성법은
 [`33_GENERIC_DATASET_SETUP_GUIDE.md`](33_GENERIC_DATASET_SETUP_GUIDE.md)를 따른다.
 
-4. 데이터셋 확인 창에서 frame 수, LiDAR/camera 목록, 좌표계, 원본 라벨, 작업 저장 폴더를 확인한다.
-5. 내용이 맞으면 `예`를 눌러 연다.
+4. 범용 v2는 profile 선택 창에서 이번 세션의 LiDAR 하나를 선택한다.
+5. 데이터셋 확인 창에서 frame 수, LiDAR/camera 목록, 좌표계, 원본 라벨, 작업 저장 폴더를 확인한다.
+6. 내용이 맞으면 `예`를 눌러 연다.
+
+`launchers/legacy/run_merged_sample.bat`은 예전 MERGED 샘플 전용이므로 일반 데이터에는 사용하지
+않는다.
 
 작업 저장 폴더에 쓸 수 없으면 별도 작업 폴더 선택 창이 열린다. 이때 선택한 폴더 아래에 데이터셋 ID별 작업 라벨이 저장되며 원본 데이터셋은 변경하지 않는다.
 
@@ -85,11 +82,11 @@ timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA�
 .\launchers\windows\run_windows.bat
 ```
 
-샘플 경로를 직접 지정하려면 다음 명령을 사용한다.
+데이터 경로를 직접 지정하려면 다음 명령을 사용한다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool gui `
-  .\local_data\incoming\merged_device_full
+  "D:\data\my_dataset"
 ```
 
 경로를 생략하면 통합 작업 선택 화면이 열린다.
@@ -101,7 +98,7 @@ timestamp를 입력한다. `구성 분석`에서 frame 수와 camera 매칭 QA�
 Linux에서 데이터셋 경로를 직접 지정하려면 다음처럼 실행한다.
 
 ```bash
-./launchers/linux/run_linux.sh /data/one_chip_converted
+./launchers/linux/run_linux.sh /data/my_dataset
 ```
 
 ### LiDAR–카메라 calibration을 화면에서 조정하기
@@ -186,8 +183,14 @@ setup은 `.venv`를 만들고,
 Conda 환경을 사용하는 방법과 Linux 시스템 package 요구사항은
 `docs/31_LAB_SOURCE_SETUP.md`에 있다.
 
-기존 `.venv`의 Python 버전이 너무 낮거나 환경이 손상된 경우 `.venv`를 제거한 뒤 setup을 다시
-실행한다. 데이터셋과 작업 라벨은 저장소 밖에 있으므로 `.venv`를 다시 만들어도 변경되지 않는다.
+기존 `.venv`의 Python 버전이 너무 낮거나 환경이 손상된 경우 폴더를 수동 삭제하지 말고 다음
+명령으로 프로젝트 내부 가상환경만 안전하게 다시 만든다.
+
+```powershell
+.\launchers\windows\setup_windows.bat -Recreate
+```
+
+데이터셋과 작업 라벨은 저장소 밖에 두므로 `.venv`를 다시 만들어도 변경되지 않는다.
 
 ## 5. 화면 구성
 
@@ -208,13 +211,16 @@ BEV와 측면 뷰는 우측 `보조 뷰`에서 필요할 때 켠다. 새 박스 
 데이터를 연 뒤 다음을 확인한다.
 
 1. 우측 `프레임`에 현재/전체 frame 수가 표시되는지 확인한다.
-2. 하단에 `LiDAR calibration: 불필요 (vehicle frame)`가 표시되는지 확인한다.
-3. 정식 merged 데이터에서는 `LiDAR 센서`에 `MERGED · Not required` 하나가 표시되는지 확인한다.
-4. `작업 저장:` 경로를 확인한다.
+2. 범용 v2는 선택한 profile과 활성 LiDAR 하나가 예상한 sensor/coordinate frame과 맞는지
+   확인한다.
+3. 다른 profile의 LiDAR가 현재 point cloud에 섞이지 않았는지 확인한다.
+4. camera가 없거나 `display_only`여도 LiDAR frame 이동과 편집이 가능한지 확인한다.
+5. `작업 저장:` 경로에 profile/LiDAR namespace가 포함되는지 확인한다.
 
 센서 이름 옆에는 `Not required`, `Applied`, `Missing`, `Invalid`, `Disabled`, `Load failed`, `Unknown` 중 하나가 표시된다. 일부 return만 손상된 경우 해당 센서는 `Load failed (일부 return 사용 가능)`로 표시되며 정상 return은 계속 렌더링된다. 자세한 파일 오류는 센서 항목이나 하단 상태 메시지에 마우스를 올려 확인한다.
 
-현재 샘플의 LiDAR point는 이미 vehicle frame이다. LiDAR extrinsic을 다시 적용하면 이중 보정이 되므로 현재 버전에서는 재적용하지 않는다.
+기존 Waymo-style 샘플의 LiDAR point는 이미 vehicle frame이다. 이 호환 샘플에 LiDAR extrinsic을
+다시 적용하면 이중 보정이 되므로 재적용하지 않는다.
 
 ## 7. 기존 객체 선택과 확인
 
@@ -331,7 +337,11 @@ Camera GT와 LiDAR 3D 객체는 ID와 생성 방식이 다르므로 완전히 �
 
 현재 작업 투영은 camera near plane과 이미지 경계로 clipping한다. 기존 Waymo 객체는 `camera_synced_box`에 사용자의 편집 delta를 반영한다. 특히 옆 카메라는 distortion 적용 전에 undistorted pinhole 시야각을 검사하여, 시야 밖 좌표가 distortion 다항식 때문에 화면 안으로 다시 접혀 들어오는 잘못된 긴 선을 차단한다.
 
-## 14. Device 중심 번호형 데이터
+## 14. v1 호환 Device 중심 번호형 데이터
+
+> 아래 `MERGED + CAM_LEFT/CAM_RIGHT`는 기존 v1/one_chip 호환 구조다. 새 범용 데이터는
+> 프로그램의 v2 구성 마법사를 사용하며, 여러 LiDAR를 profile별로 분리하고 camera는 profile당
+> 최대 한 개만 선택한다.
 
 장치 구성이 고정된 데이터는 frame별 폴더 없이 다음처럼 단순하게 넣을 수 있다.
 
@@ -357,7 +367,13 @@ dataset/
 
 저장 버튼 또는 Ctrl+S를 사용한다. 다음 frame으로 이동할 때도 변경 사항이 있으면 먼저 자동 저장된다.
 
-작업 파일 위치:
+범용 v2 작업 파일 위치:
+
+```text
+<configuration-root>\annotations\lidar_label_tool\<profile_id>\<label_lidar_id>\<frame_id>.json
+```
+
+v1 호환 작업 파일 위치:
 
 ```text
 <dataset>\annotations\lidar_label_tool\<frame_id>.json
@@ -366,7 +382,7 @@ dataset/
 두 번째 저장부터는 직전 작업 파일이 다음 경로에 백업된다.
 
 ```text
-<dataset>\annotations\lidar_label_tool\<frame_id>.json.bak
+<working-label-path>.bak
 ```
 
 원본 파일인 `<frame>\labels\*.json`은 변경하지 않는다.
@@ -375,10 +391,11 @@ dataset/
 경고한다. 저장 시에도 다시 확인하며, 사용자가 명시적으로 계속하기 전에는 새 기준 fingerprint를
 기록하지 않는다. 이 경고가 나오면 3D 박스와 camera projection을 다시 확인한다.
 
-저장되지 않은 변경이 있으면 기본 30초 간격으로 다음 위치에 복구본을 원자적으로 기록한다.
+저장되지 않은 변경이 있으면 기본 30초 간격으로 현재 label namespace의 `.recovery`에 복구본을
+원자적으로 기록한다.
 
 ```text
-<dataset>\annotations\lidar_label_tool\.recovery\<frame_id>.recovery.json
+<label-namespace>\.recovery\<frame_id>.recovery.json
 ```
 
 복구본은 정상 작업 JSON을 덮어쓰지 않는다. 다음 실행에서 저장된 작업 JSON보다 새로운 복구본이
@@ -477,8 +494,8 @@ Launcher를 설치한 뒤 새 PowerShell을 연다. Windows setup/run 스크립�
 일반 저장은 export를 자동 실행하지 않는다. 소스 설치 환경의 PowerShell에서 별도로 실행한다.
 
 ```powershell
-lidar-label-tool export <dataset> --format lidar_label_json --output <output-folder>
-lidar-label-tool export <dataset> --format centerpoint_intermediate_json --output <output-folder>
+.\.venv\Scripts\python.exe -m lidar_label_tool export <dataset> --format lidar_label_json --output <output-folder>
+.\.venv\Scripts\python.exe -m lidar_label_tool export <dataset> --format centerpoint_intermediate_json --output <output-folder>
 ```
 
 특정 프레임만 내보내려면 `--frame <frame_id>`를 사용하며 여러 번 지정할 수 있다. 별도 작업 폴더를

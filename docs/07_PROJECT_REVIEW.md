@@ -1,7 +1,9 @@
 # 프로젝트 재검수 결과
 
-> 이 문서는 초기 설계 검토 기록이다. 현재 실험실 운영 방식은
-> `docs/08_DISTRIBUTION_PLAN.md`와 `docs/31_LAB_SOURCE_SETUP.md`를 따른다.
+> 이 문서는 초기 설계 검토 기록이다. 현재 범용 입력 계약은
+> `docs/32_GENERIC_DATASET_V2_CONTRACT.md`, 실험실 운영 방식은
+> `docs/08_DISTRIBUTION_PLAN.md`와 `docs/31_LAB_SOURCE_SETUP.md`를 따른다. 아래 portable 배포
+> 논의는 현재 운영 지침이 아니다.
 
 검수 기준은 요구사항 누락, 계층 의존성, 데이터 손상 위험, 좌표계 모호성, UI 상태 일관성, 성능, 다른 PC 배포 가능성이다.
 

@@ -2,6 +2,9 @@
 
 이 문서는 실제 라벨링을 시작하기 전에 사용자가 그대로 따라 해보고 피드백을 남기기 위한 절차이다. 기능 설명은 `docs/USER_MANUAL.md`, 데이터 품질 점검은 `docs/18_PREFLIGHT_AND_QA.md`를 함께 참고한다.
 
+새 Windows PC는 python.org 공식 Python 3.12 64-bit와 현재 `codex/v2` source setup이 먼저
+완료되어야 한다. 설치 절차는 루트 `README.md`를 따른다.
+
 ## 1. 테스트 목표
 
 이번 테스트에서는 다음을 확인한다.
@@ -16,21 +19,27 @@
 
 ## 2. 테스트 전에 지킬 것
 
-가능하면 원본 데이터셋을 바로 쓰지 말고 복사본으로 시험한다. 작업 라벨은 다음 위치에 생성된다.
+원본 point/image/timestamp/source label은 읽기 전용으로 취급한다. 쓰기 가능한 범용 v2
+configuration root를 원본과 같은 폴더에 만들거나, 원본이 읽기 전용이면 별도 workspace를
+선택한다. v2 작업 라벨은 다음 namespace에 생성된다.
 
 ```text
-<dataset>\annotations\lidar_label_tool\
+<configuration-root>\annotations\lidar_label_tool\<profile_id>\<label_lidar_id>\
 ```
 
-원본 source label은 덮어쓰지 않는다. 그래도 첫 테스트에서는 복사본을 쓰는 편이 마음이 편하다. 도구도 사람도 실수할 수 있으니까, 여긴 안전벨트를 매는 구간이다.
+원본 source label은 덮어쓰지 않는다. 처음 생성하는 configuration/workspace는 별도 빈 폴더에
+두면 source와 작업 결과의 경계를 확인하기 쉽다.
 
-데이터셋 폴더를 선택할 때는 `dataset.json`이 직접 들어 있는 폴더를 선택한다. 예를 들면 다음 위치이다.
+이미 구성된 데이터셋은 `dataset.json`이 직접 들어 있는 configuration root를 선택한다.
+아직 `dataset.json`이 없는 BIN/PCD 원본은 첫 화면의 `데이터 폴더/데이터셋 열기`에서 원본
+폴더를 선택해 구성 마법사를 실행한다.
 
 ```text
-C:\Users\USER\Desktop\Labelling_tool\local_data\incoming\merged_device_full
+D:\data\my_dataset
 ```
 
-`local_data`, `incoming`, ZIP 파일, 또는 한 단계 위 폴더를 선택하면 안 된다.
+ZIP 파일은 직접 열지 않는다. 여러 데이터셋이 섞인 상위 폴더 대신 실제 sensor 파일이 있는
+원본 root 또는 `dataset.json`이 있는 configuration root를 선택한다.
 
 ## 3. 실행 전 사전검수
 
@@ -44,21 +53,22 @@ cd C:\Users\USER\Desktop\Labelling_tool
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool preflight `
-  .\local_data\incoming\merged_device_full
+  "D:\data\my_dataset"
 ```
 
 JSON으로 저장해서 피드백에 첨부하고 싶으면 다음처럼 실행한다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool preflight `
-  .\local_data\incoming\merged_device_full --json
+  "D:\data\my_dataset" --json
 ```
 
 확인할 내용:
 
 - `Frames`가 예상 frame 수와 맞는가
-- `LiDARs`에 `MERGED`가 표시되는가
-- camera 목록이 예상과 맞는가
+- 선택 profile의 LiDAR가 정확히 하나이며 예상 sensor와 맞는가
+- camera가 없음 또는 예상한 한 개로 표시되는가
+- frame index의 match/unmatched/reuse/max delta가 구성 분석 결과와 맞는가
 - `errors=0`인지 확인한다
 - warning이 있다면 어떤 frame, 어떤 sensor인지 적어 둔다
 
@@ -72,13 +82,7 @@ JSON으로 저장해서 피드백에 첨부하고 싶으면 다음처럼 실행�
 
 ## 4. GUI 실행
 
-가장 쉬운 방법은 다음 파일을 더블클릭하는 것이다.
-
-```text
-C:\Users\USER\Desktop\Labelling_tool\launchers\legacy\run_merged_sample.bat
-```
-
-다른 데이터셋을 고르려면 다음 파일을 더블클릭한다.
+가장 쉬운 방법은 다음 파일을 더블클릭한다.
 
 ```text
 C:\Users\USER\Desktop\Labelling_tool\launchers\windows\run_windows.bat
@@ -88,8 +92,11 @@ PowerShell에서 직접 열 수도 있다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool gui `
-  .\local_data\incoming\merged_device_full
+  "D:\data\my_dataset"
 ```
+
+`launchers\legacy\run_merged_sample.bat`은 예전 MERGED 샘플 전용이며 범용 v2 테스트의 기본
+실행 파일이 아니다.
 
 데이터셋 확인 창이 뜨면 다음을 본다.
 
@@ -106,10 +113,11 @@ PowerShell에서 직접 열 수도 있다.
 GUI가 열리면 다음 순서로 확인한다.
 
 1. 우측 프레임 패널에서 현재 frame과 전체 frame 수가 보이는지 본다.
-2. `LiDAR 센서`에 `MERGED · Not required` 또는 예상한 상태가 보이는지 본다.
+2. 선택한 profile과 활성 LiDAR ID가 예상과 맞고 다른 LiDAR가 섞이지 않는지 본다.
 3. 하단 상태줄에서 frame id, point 수, object 수, 저장 상태, warning 수가 보이는지 본다.
 4. 기존 라벨이 있는 frame이면 3D 박스가 보이는지 본다.
 5. 라벨이 없는 frame이면 객체 목록이 비어 있어도 앱이 정상 실행되는지 본다.
+6. camera/calibration이 없는 profile도 LiDAR frame을 이동하고 저장할 수 있는지 본다.
 
 문제가 있으면 피드백에 다음을 적는다.
 
@@ -286,7 +294,7 @@ projection이 이상해 보이면 다음을 기록한다.
 저장 위치:
 
 ```text
-<dataset>\annotations\lidar_label_tool\<frame_id>.json
+<configuration-root>\annotations\lidar_label_tool\<profile_id>\<label_lidar_id>\<frame_id>.json
 ```
 
 확인 순서:
@@ -310,7 +318,7 @@ projection이 이상해 보이면 다음을 기록한다.
 위치:
 
 ```text
-<dataset>\annotations\lidar_label_tool\.recovery\<frame_id>.recovery.json
+<profile-namespace>\.recovery\<frame_id>.recovery.json
 ```
 
 다음 실행에서 저장된 작업 JSON보다 새로운 recovery가 있으면 앱이 자동 복원하지 않고 사용자에게 선택을 물어본다.
@@ -327,14 +335,14 @@ source label 기준 통계:
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool stats `
-  .\local_data\incoming\merged_device_full
+  "D:\data\my_dataset" --profile <profile_id>
 ```
 
 working label 기준 통계:
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool stats `
-  .\local_data\incoming\merged_device_full --working
+  "D:\data\my_dataset" --profile <profile_id> --working
 ```
 
 확인할 내용:
@@ -353,18 +361,18 @@ working label 기준 통계:
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool export `
-  .\local_data\incoming\merged_device_full `
+  "D:\data\my_dataset" --profile <profile_id> `
   --format lidar_label_json `
-  --output .\local_data\exports\lidar_label_json
+  --output "D:\exports\lidar_label_json"
 ```
 
 CenterPoint 중간 JSON export:
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool export `
-  .\local_data\incoming\merged_device_full `
+  "D:\data\my_dataset" --profile <profile_id> `
   --format centerpoint_intermediate_json `
-  --output .\local_data\exports\centerpoint_intermediate_json
+  --output "D:\exports\centerpoint_intermediate_json"
 ```
 
 `centerpoint_intermediate_json`은 학습 포맷 변환 전 중간 JSON이다. 공식 CenterPoint/OpenPCDet 학습 포맷이라고 간주하면 안 된다.

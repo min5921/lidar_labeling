@@ -4,6 +4,19 @@
 
 폴더를 선택하면 바로 무거운 화면을 띄우지 않고 짧은 validation summary를 먼저 보여준다.
 
+`dataset.json`이 없지만 LiDAR 후보가 있는 폴더는 adapter 오류로 끝내지 않고 범용 v2 구성
+화면으로 연결한다. 구성 화면은 다음 규칙을 지킨다.
+
+- LiDAR 후보는 여러 개 선택할 수 있지만 후보마다 독립 profile을 만들고 profile당 활성 LiDAR는
+  정확히 하나다.
+- camera는 없음 또는 한 개만 선택한다.
+- BIN point columns, coordinate frame, timestamp column/unit/clock domain을 자동 추측하지 않는다.
+- 좌표 계약 확인 전에는 생성을 허용하지 않는다.
+- `구성 분석`은 파일을 쓰지 않고 frame/match/unmatched/reuse/max delta를 보여준다.
+- 분석 후 설정이나 원본이 바뀌면 오래된 결과를 폐기하고 재분석을 요구한다.
+- `dataset.json`은 새 generation의 schema·payload·preflight 검증이 끝난 뒤 마지막에 원자 교체한다.
+- 읽기 전용 원본은 별도 configuration/annotation workspace를 선택하게 한다.
+
 - 인식된 adapter와 dataset 이름
 - frame 수
 - LiDAR/camera 목록과 primary sensor

@@ -4,6 +4,20 @@
 LiDAR Label Tool에서 바로 구성하고 라벨링하는 절차다. `dataset.json`, taxonomy, frame index는
 프로그램이 생성하므로 사용자가 JSON을 직접 작성하지 않는다.
 
+## 0. 실행 준비
+
+현재 프로그램은 Python이 포함된 EXE가 아니라 source 가상환경으로 실행한다. 새 Windows PC에는
+python.org 공식 Python 3.12 64-bit와 Git을 먼저 설치하고, 현재 `codex/v2` 브랜치에서 다음을
+한 번 실행한다.
+
+```powershell
+.\launchers\windows\setup_windows.bat
+.\launchers\windows\run_windows.bat
+```
+
+Conda Python만으로 Windows `.venv`를 만들지 않는다. 설치와 Qt DLL 복구 절차는 루트
+`README.md`와 `docs/31_LAB_SOURCE_SETUP.md`를 따른다.
+
 ## 1. 준비할 원본
 
 ### LiDAR

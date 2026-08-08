@@ -1,6 +1,6 @@
 # 구현 상태
 
-## 범용 데이터셋 v2 foundation
+## 범용 데이터셋 v2 구현 완료 범위
 
 완료:
 
@@ -118,7 +118,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 다음 구현
 
-1. Python 미설치 clean Windows PC에서 한글/공백 경로 open/edit/save 최종 인증
+1. 공식 Python 3.12가 설치된 clean Windows PC에서 한글/공백 경로 setup/open/edit/save 최종 인증
 2. third-party license 묶음, 앱 아이콘, 버전 정보, 코드 서명
 3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
 4. source-compatible exporter와 GUI export 대화상자

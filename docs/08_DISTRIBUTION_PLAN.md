@@ -10,8 +10,8 @@ Python 미설치 단일 실행 파일보다 source commit과 고정 dependency�
 
 - Windows 10/11 x64
 - Ubuntu 22.04 이상 x86_64
-- Python 3.10 이상 64-bit
-- 프로젝트별 `.venv` 또는 독립 Conda 환경
+- Python 3.10 이상 64-bit; 새 Windows PC 권장 기준은 python.org 공식 Python 3.12 x64
+- 기본 운영 경로는 프로젝트별 `.venv`; Conda는 수동 고급 대안
 - `requirements-lock.txt`로 고정한 runtime package
 
 OS별 setup script는 가상환경 생성, package 설치, editable project 설치, 기본 설정 검증까지
@@ -27,13 +27,20 @@ OS별 setup script는 가상환경 생성, package 설치, editable project 설�
 - `docs/31_LAB_SOURCE_SETUP.md`
 - 별도로 전달하는 device-centric dataset
 
+현재 개발·검증 source는 GitHub의 `codex/v2` 브랜치다. 새 PC에서는 다음처럼 브랜치를
+명시해 받는다.
+
+```powershell
+git clone --branch codex/v2 --single-branch https://github.com/min5921/lidar_labeling.git
+```
+
 `.venv`, Conda 환경, 원본 rosbag, 변환 dataset과 작업 라벨은 Git에 포함하지 않는다.
 
 ## 재현성
 
 Windows와 Linux CI에서 다음을 반복한다.
 
-1. Python 3.10 clean runner 준비
+1. Python 3.10/3.12 clean runner 준비
 2. runtime/development lock 설치
 3. project editable 설치
 4. source 환경 검증
@@ -57,8 +64,9 @@ wheelhouse를 서로 섞지 않는다.
 
 ## 데이터와 사용자 파일
 
-- 원본 MCAP/YAML은 변환 source이며 source code와 분리한다.
-- 변환 결과 위치는 GUI 또는 CLI에서 사용자가 선택한다.
+- 원본 BIN/PCD, image, timestamp CSV와 선택적 calibration은 source code와 분리한다.
+- 범용 v2 구성/라벨 위치는 GUI에서 선택하며, 특정 one_chip MCAP/YAML 변환은 레거시 도구로
+  분리한다.
 - 작업 라벨은 dataset sidecar 또는 명시한 workspace에 원자적으로 저장한다.
 - 설정과 log는 Windows AppData 또는 Linux XDG 사용자 경로에 둔다.
 - source label은 직접 덮어쓰지 않는다.
@@ -67,10 +75,13 @@ wheelhouse를 서로 섞지 않는다.
 
 - setup 종료 시 환경 검증 통과
 - Windows/Linux CI 통과
+- 새 Windows PC에서 `py -3.12 --version`과 공식 CPython 기반 `.venv` 확인
 - 대상 dataset preflight 실행
-- calibration reference frame과 fingerprint 확인
-- nearest sync 반복/점프 QA 확인
-- 좌/우 camera projection 확인
+- profile당 활성 LiDAR 하나와 camera 0~1개 확인
+- point columns, coordinate frame, timestamp unit/clock domain 확인
+- calibration reference frame과 fingerprint 확인; calibration이 없어도 LiDAR 작업 유지
+- nearest sync match/unmatched/reuse/max delta QA 확인
+- 선택 camera projection 확인
 - box 저장, 재로드, ID/unknown field 보존 확인
 - 한글·공백 경로 확인
 

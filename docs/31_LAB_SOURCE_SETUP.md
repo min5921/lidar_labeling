@@ -12,7 +12,8 @@ PyInstaller, GitHub Release 실행 파일은 현재 운영 경로가 아니다.
 - `requirements-lock.txt`의 GUI/validation runtime package 버전
 - `requirements-dev-lock.txt`의 테스트/정적 검사 package 버전
 - 동일한 저장소 commit
-- 데이터셋의 `dataset.json`, calibration fingerprint, `sync/frames.jsonl`
+- 데이터셋의 `dataset.json`, calibration fingerprint와 v1 `sync/frames.jsonl` 또는 v2
+  `generations/<generation>/sync/<profile>.frames.jsonl`
 
 runtime lock은 기준 최소 버전인 Python 3.10과 일반 개발 버전인 Python 3.12에서 함께 설치
 가능한 버전으로 유지한다.
@@ -22,16 +23,29 @@ runtime lock은 기준 최소 버전인 Python 3.10과 일반 개발 버전인 P
 
 ## 2. 공통 준비
 
-저장소를 clone하거나 실험실 파일 서버에서 전체 소스 폴더를 받는다.
+현재 개발·검증 브랜치를 명시해 저장소를 clone하거나 실험실 파일 서버에서 전체 소스 폴더를
+받는다.
 
-```text
-https://github.com/min5921/lidar_labeling.git
+```powershell
+git clone --branch codex/v2 --single-branch https://github.com/min5921/lidar_labeling.git
+cd lidar_labeling
 ```
 
 Python은 python.org의 공식 64-bit CPython 3.10 이상을 설치한다. 새 Windows PC의 우선 검증
 버전은 64-bit Python 3.12다. 처음 환경을 만들 때는 PyPI package 다운로드를 위한 인터넷 또는
 실험실 내부 package mirror가 필요하다. 다른 PC에서 만든 `.venv`는 복사하지 않는다. PowerShell
 앞에 `(base)`가 표시되는 Conda Python을 일반 `.venv`의 기반으로 사용하지 않는다.
+
+Windows에서는 [python.org Windows 다운로드](https://www.python.org/downloads/windows/)의
+`Windows installer (64-bit)`를 사용하고 `Add python.exe to PATH`와 `Python Launcher`를
+선택한다. 설치 후 모든 PowerShell을 닫고 새 창에서 확인한다.
+
+```powershell
+py -3.12 --version
+```
+
+`Python was not found ... Microsoft Store` 또는 `py 명령을 찾을 수 없습니다`가 나오면 공식
+Python 설치가 완료되지 않은 것이다. App execution alias나 Conda `(base)`만으로 대체하지 않는다.
 
 ## 3. Windows venv
 
@@ -48,6 +62,12 @@ setup과 Windows run 스크립트는 활성 Conda의 `Library/bin` 및 Qt 관련
 `-Recreate`를 요구한다. `py` 명령을 찾을 수 없고 `(base)`만 표시된다면
 `https://www.python.org/downloads/windows/`에서 Python 3.12 64-bit와 Python Launcher를 먼저
 설치한다.
+
+성공하면 마지막에 다음 형식이 출력된다.
+
+```text
+[OK] LiDAR Label Tool source environment verified (...)
+```
 
 Qt DLL 검증이 실패하면 setup은 잠금된 PySide6·Essentials·Addons·shiboken6를 cache 없이 한 번
 강제 재설치하고 다시 검사한다. 기존 환경을 명시적으로 복구하거나 완전히 다시 만들려면 저장소
@@ -67,7 +87,7 @@ runtime을 설치 또는 복구하고 `winver`에서 Windows 10 1809 이상 또�
 있다.
 
 ```powershell
-.\launchers\windows\run_windows.bat E:\one_chip_converted
+.\launchers\windows\run_windows.bat "D:\data\my_dataset"
 ```
 
 Python Launcher나 PATH 대신 특정 Python 실행 파일을 지정하려면 다음처럼 실행한다.
@@ -102,10 +122,10 @@ PYTHON_BIN=python3.12 ./launchers/linux/setup_linux.sh
 dataset 경로를 직접 전달할 수도 있다.
 
 ```bash
-./launchers/linux/run_linux.sh /data/one_chip_converted
+./launchers/linux/run_linux.sh /data/my_dataset
 ```
 
-## 5. Conda 대안
+## 5. Conda 고급 대안
 
 Windows PowerShell 또는 Linux shell에서 같은 순서로 실행한다.
 
@@ -122,12 +142,23 @@ python -m lidar_label_tool gui
 Conda 환경에서도 PySide6 등 runtime package는 `requirements-lock.txt`에 따라 pip로 설치한다.
 이 대안을 선택했다면 `setup_windows.bat`이나 `.venv`용 run 스크립트를 사용하지 않고, 활성화한
 전용 Conda 환경에서 `python -m lidar_label_tool gui`로 실행한다. venv와 Conda 환경을 한 실행에서
-섞지 않는다.
+섞지 않는다. 새 Windows PC의 기본 설치 및 검증 경로는 이 대안이 아니라 공식 Python 기반
+`.venv`다.
 
-## 6. 원본 변환과 경로
+## 6. 범용 데이터 구성과 one_chip 레거시
 
-경로는 코드에 고정하지 않는다. GUI 첫 화면에서 source와 output을 선택하거나 CLI 인자로
-지정한다.
+경로는 코드에 고정하지 않는다. GUI 첫 화면의 `데이터 폴더/데이터셋 열기`에서
+`dataset.json`이 없는 BIN/PCD 원본 폴더를 선택하면 범용 v2 구성 화면이 열린다. LiDAR
+point columns·coordinate frame, 선택적 camera, sync 방식과 timestamp column/unit/clock
+domain을 확인한 뒤 `구성 분석`과 `검증 결과로 생성`을 순서대로 실행한다.
+
+여러 LiDAR 후보는 profile별로 분리되며 한 세션에서 하나만 활성화한다. 이미 만든 v2에 다른
+LiDAR를 추가할 때는 `범용 v2 LiDAR profile 추가`, camera 연결을 다시 만들 때는
+`범용 v2 재동기화`를 사용한다. 자세한 절차는 `docs/33_GENERIC_DATASET_SETUP_GUIDE.md`를
+따른다.
+
+아래 CLI는 특정 `calibration + rosbags` 구조를 위한 one_chip 레거시 도구다. 일반 BIN/PCD
+폴더에는 사용하지 않는다.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\convert_one_chip_dataset.py `
@@ -156,14 +187,16 @@ Windows:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\verify_source_environment.py
-.\.venv\Scripts\python.exe -m lidar_label_tool preflight E:\one_chip_converted
+.\.venv\Scripts\python.exe -m lidar_label_tool validate-v2 "D:\data\my_dataset"
+.\.venv\Scripts\python.exe -m lidar_label_tool preflight "D:\data\my_dataset"
 ```
 
 Linux:
 
 ```bash
 ./.venv/bin/python scripts/verify_source_environment.py
-./.venv/bin/python -m lidar_label_tool preflight /data/one_chip_converted
+./.venv/bin/python -m lidar_label_tool validate-v2 /data/my_dataset
+./.venv/bin/python -m lidar_label_tool preflight /data/my_dataset
 ```
 
 환경 검사는 Python 버전, 모든 고정 runtime package 버전, 프로젝트 import, 기본 설정 JSON과
@@ -189,8 +222,10 @@ Linux는 실행 파일 경로만 `./.venv/bin/python`으로 바꾼다. GitHub Ac
 
 작업 라벨과 dataset을 백업한 뒤 source를 업데이트한다.
 
-```text
-git pull
+```powershell
+git fetch origin
+git switch codex/v2
+git pull --ff-only origin codex/v2
 ```
 
 의존성 또는 프로젝트 코드가 바뀔 수 있으므로 setup을 다시 실행한다. 기존 `.venv`를 재사용하며
@@ -199,13 +234,15 @@ git pull
 ## 10. 다른 PC 전달 체크리스트
 
 - 같은 commit 또는 태그의 source인지 확인
-- Python 3.10 이상 64-bit인지 확인
+- Windows는 공식 Python 3.12 64-bit와 `py -3.12 --version` 확인
 - setup 종료 시 `[OK]` 환경 검사가 출력되는지 확인
 - dataset을 저장소 밖의 읽기/쓰기 가능한 경로에 배치
+- 범용 v2는 profile당 활성 LiDAR 하나, camera 0~1개인지 확인
+- BIN 전체 point columns, coordinate frame, timestamp column/unit/clock domain 확인
 - `preflight` 종료 코드와 error/warning 확인
-- Calibration reference frame과 fingerprint 확인
-- frame 2991~3005처럼 알려진 구간의 camera sample 증가 확인
-- GUI에서 좌/우 camera projection 확인
+- Calibration reference frame과 fingerprint 확인; 없을 때도 LiDAR 저장 가능한지 확인
+- nearest sync의 match/unmatched/reuse/max delta 확인
+- 선택 camera projection 확인
 - 테스트 프레임 저장 후 재실행하여 box ID와 값 유지 확인
 
 ## 11. 오프라인 설치

@@ -15,12 +15,19 @@
 v2 스키마 원본은 저장소의 `schemas/`에 있다. 현재 GUI는 `dataset.json`이 없는 폴더를 구성
 화면으로 연결하고, profile별 v2 라벨 저장과 분석 후 원자적 재동기화를 지원한다.
 
+새 Windows PC에는 python.org 공식 Python 3.12 64-bit와 Git이 필요하다. 현재 개발·검증
+브랜치는 `codex/v2`이며, Conda Python만 설치된 PC에서는 Windows `.venv`를 만들지 않는다.
+설치 오류가 나면 문서를 임의 순서로 찾기보다 먼저 루트 `README.md`와
+`31_LAB_SOURCE_SETUP.md`를 확인한다.
+
 ## 현재 프로그램 사용
 
 - [`../README.md`](../README.md): 설치, 실행, 현재 제공 기능
 - [`USER_MANUAL.md`](USER_MANUAL.md): GUI 라벨링 사용법
 - [`19_TRIAL_RUN_MANUAL.md`](19_TRIAL_RUN_MANUAL.md): 실제 데이터 검수 절차
 - [`31_LAB_SOURCE_SETUP.md`](31_LAB_SOURCE_SETUP.md): Windows/Linux 개발 환경
+- [`LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx`](LIDAR_LABEL_TOOL_BEGINNER_SETUP_GUIDE_KO.docx):
+  새 PC 설치부터 범용 v2 데이터 구성까지의 초보자용 Word 안내서
 
 ## 설계와 구현 관리
 

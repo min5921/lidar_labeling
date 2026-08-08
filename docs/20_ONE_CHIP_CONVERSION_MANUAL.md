@@ -1,5 +1,9 @@
 # one_chip 데이터 변환 및 실행 매뉴얼
 
+> **레거시 전용:** 이 문서는 특정 `calibration + rosbags` 취득 구조만 다룬다. 일반 BIN/PCD와
+> camera 폴더는 이 변환기를 사용하지 않고 `데이터 폴더/데이터셋 열기`의 범용 v2 구성
+> 마법사를 사용한다. 범용 절차는 `docs/33_GENERIC_DATASET_SETUP_GUIDE.md`를 따른다.
+
 이 문서는 `E:\one_chip` 실제 취득 데이터를 LiDAR Label Tool에서 열 수 있는
 device-centric dataset으로 변환하고 검수·실행하는 절차를 정리한다.
 
