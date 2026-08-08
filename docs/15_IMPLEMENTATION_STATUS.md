@@ -109,7 +109,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 200개 통과
+- 전체 unit/integration/schema 회귀 테스트 202개 통과
 - 범용 v2 신규 모듈 mypy와 저장소 전체 Ruff 통과
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구

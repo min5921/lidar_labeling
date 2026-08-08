@@ -8,6 +8,7 @@ import sys
 
 
 LOCK_PATTERN = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^\s;]+)$")
+CONDA_PATH_MARKERS = ("anaconda", "miniconda", "miniforge", "mambaforge")
 
 
 def locked_requirements(path: Path) -> dict[str, str]:
@@ -55,6 +56,20 @@ def probe_qt_runtime(
     return f"PySide6 {pyside_version}, Qt {qt_version}", None
 
 
+def is_conda_backed_venv(
+    prefix: str = sys.prefix,
+    base_prefix: str = sys.base_prefix,
+) -> bool:
+    """Return whether a standard venv was created from a Conda Python base."""
+
+    if Path(prefix) == Path(base_prefix):
+        return False
+    normalized_base = str(Path(base_prefix)).casefold()
+    return (Path(base_prefix) / "conda-meta").is_dir() or any(
+        marker in normalized_base for marker in CONDA_PATH_MARKERS
+    )
+
+
 def main() -> int:
     project_root = Path(__file__).resolve().parents[1]
     if sys.version_info < (3, 10):
@@ -72,6 +87,12 @@ def main() -> int:
     )
 
     mismatches: list[str] = []
+    conda_backed_venv = is_conda_backed_venv()
+    if conda_backed_venv:
+        mismatches.append(
+            "python/base: .venv was created from Conda Python; native Qt DLLs "
+            "can conflict"
+        )
     for name, expected in expected_packages.items():
         try:
             actual = metadata.version(name)
@@ -97,6 +118,12 @@ def main() -> int:
         print("[ERROR] Source environment verification failed:", file=sys.stderr)
         for mismatch in mismatches:
             print(f"  - {mismatch}", file=sys.stderr)
+        if conda_backed_venv and sys.platform == "win32":
+            print(
+                "[ACTION] Install official 64-bit Python 3.12 from python.org, "
+                "then run setup_windows.bat -Recreate.",
+                file=sys.stderr,
+            )
         if qt_error is not None:
             if sys.platform == "win32":
                 print(

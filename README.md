@@ -27,8 +27,8 @@ LiDAR point cloud와 좌·우 camera image를 함께 보면서 3D bounding box�
 ### 1. Git과 Python 설치
 
 1. [Git for Windows](https://git-scm.com/download/win)를 설치합니다.
-2. [Python for Windows](https://www.python.org/downloads/windows/)에서 Python 3.10 이상
-   64-bit를 설치합니다.
+2. [Python for Windows](https://www.python.org/downloads/windows/)에서 공식 CPython 3.12
+   64-bit를 설치합니다. Conda의 `(base)` Python을 `.venv` 생성용으로 사용하지 않습니다.
 3. Python 설치 화면에서 `Add python.exe to PATH`와 Python Launcher 옵션을 켭니다.
 4. 새 PowerShell에서 설치를 확인합니다.
 
@@ -36,6 +36,9 @@ LiDAR point cloud와 좌·우 camera image를 함께 보면서 3D bounding box�
 git --version
 py -3 --version
 ```
+
+`py` 명령을 찾을 수 없고 PowerShell 앞에 `(base)`가 표시되면 Conda만 설치된 상태일 수 있다.
+python.org 설치 프로그램에서 Python Launcher 옵션까지 선택한 뒤 새 PowerShell을 연다.
 
 ### 2. 저장소 내려받기
 

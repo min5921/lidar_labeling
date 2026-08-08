@@ -28,19 +28,26 @@ runtime lock은 기준 최소 버전인 Python 3.10과 일반 개발 버전인 P
 https://github.com/min5921/lidar_labeling.git
 ```
 
-Python은 64-bit 3.10 이상을 설치한다. 새 Windows PC의 우선 검증 버전은 64-bit Python
-3.12다. 처음 환경을 만들 때는 PyPI package 다운로드를 위한 인터넷 또는 실험실 내부 package
-mirror가 필요하다. 다른 PC에서 만든 `.venv`는 복사하지 않는다.
+Python은 python.org의 공식 64-bit CPython 3.10 이상을 설치한다. 새 Windows PC의 우선 검증
+버전은 64-bit Python 3.12다. 처음 환경을 만들 때는 PyPI package 다운로드를 위한 인터넷 또는
+실험실 내부 package mirror가 필요하다. 다른 PC에서 만든 `.venv`는 복사하지 않는다. PowerShell
+앞에 `(base)`가 표시되는 Conda Python을 일반 `.venv`의 기반으로 사용하지 않는다.
 
 ## 3. Windows venv
 
 `launchers/windows/setup_windows.bat`을 더블클릭한다. 스크립트는 다음 작업을 수행한다.
 
-1. 64-bit Python 3.12 우선 탐색 후 다른 3.10 이상 Python 탐색
+1. python.org의 64-bit Python 3.12 우선 탐색 후 다른 3.10 이상 공식 CPython 탐색
 2. `.venv` 생성
 3. 고정 runtime package 설치
 4. 프로젝트 editable 설치
 5. package 버전, 기본 설정, `PySide6.QtCore/QtGui/QtWidgets` native DLL 검증
+
+setup과 Windows run 스크립트는 활성 Conda의 `Library/bin` 및 Qt 관련 환경 변수를 실행 PATH에서
+제거한다. Conda Python으로 만들어진 기존 `.venv`는 재사용하지 않고 공식 CPython 설치 후
+`-Recreate`를 요구한다. `py` 명령을 찾을 수 없고 `(base)`만 표시된다면
+`https://www.python.org/downloads/windows/`에서 Python 3.12 64-bit와 Python Launcher를 먼저
+설치한다.
 
 Qt DLL 검증이 실패하면 setup은 잠금된 PySide6·Essentials·Addons·shiboken6를 cache 없이 한 번
 강제 재설치하고 다시 검사한다. 기존 환경을 명시적으로 복구하거나 완전히 다시 만들려면 저장소
@@ -66,7 +73,7 @@ runtime을 설치 또는 복구하고 `winver`에서 Windows 10 1809 이상 또�
 Python Launcher나 PATH 대신 특정 Python 실행 파일을 지정하려면 다음처럼 실행한다.
 
 ```powershell
-.\launchers\windows\setup_windows.bat -PythonCommand C:\Python310\python.exe
+.\launchers\windows\setup_windows.bat -PythonCommand C:\Python312\python.exe
 ```
 
 ## 4. Linux venv
@@ -103,7 +110,7 @@ dataset 경로를 직접 전달할 수도 있다.
 Windows PowerShell 또는 Linux shell에서 같은 순서로 실행한다.
 
 ```text
-conda create --name lidar-label-tool python=3.10 pip
+conda create --name lidar-label-tool python=3.12 pip
 conda activate lidar-label-tool
 python -m pip install --requirement requirements-bootstrap-lock.txt
 python -m pip install --requirement requirements-lock.txt
@@ -113,7 +120,9 @@ python -m lidar_label_tool gui
 ```
 
 Conda 환경에서도 PySide6 등 runtime package는 `requirements-lock.txt`에 따라 pip로 설치한다.
-venv와 Conda 환경을 한 실행에서 섞지 않는다.
+이 대안을 선택했다면 `setup_windows.bat`이나 `.venv`용 run 스크립트를 사용하지 않고, 활성화한
+전용 Conda 환경에서 `python -m lidar_label_tool gui`로 실행한다. venv와 Conda 환경을 한 실행에서
+섞지 않는다.
 
 ## 6. 원본 변환과 경로
 

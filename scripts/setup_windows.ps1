@@ -22,6 +22,44 @@ if (
 $EnvironmentPython = Join-Path $EnvironmentRoot "Scripts\python.exe"
 $RuntimeLockPath = Join-Path $ProjectRoot "requirements-lock.txt"
 $VerifierPath = Join-Path $ProjectRoot "scripts\verify_source_environment.py"
+$DetectedCondaPrefix = $env:CONDA_PREFIX
+$OriginalPathEntries = @($env:PATH -split ";")
+
+# An activated Conda base commonly places incompatible Qt DLLs ahead of the
+# locked PySide6 wheel. The source launcher uses an isolated venv, so retain
+# only Windows system locations while setup and the application are running.
+$env:PATH = @(
+    (Join-Path $env:SystemRoot "System32"),
+    $env:SystemRoot,
+    (Join-Path $env:SystemRoot "System32\Wbem"),
+    (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0")
+) -join ";"
+foreach ($VariableName in @(
+    "CONDA_PREFIX",
+    "CONDA_DEFAULT_ENV",
+    "CONDA_PROMPT_MODIFIER",
+    "CONDA_SHLVL",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "QT_PLUGIN_PATH",
+    "QML2_IMPORT_PATH"
+)) {
+    Remove-Item -LiteralPath "Env:$VariableName" -ErrorAction SilentlyContinue
+}
+
+if ($DetectedCondaPrefix) {
+    Write-Host "[SETUP] Ignoring active Conda environment: $DetectedCondaPrefix"
+}
+
+function Test-CondaBasePython {
+    param(
+        [string]$Program,
+        [string[]]$Arguments
+    )
+
+    & $Program @Arguments -c "import os, sys; root = os.path.normcase(sys.base_prefix); markers = ('anaconda', 'miniconda', 'miniforge', 'mambaforge'); is_conda = os.path.isdir(os.path.join(sys.base_prefix, 'conda-meta')) or any(marker in root for marker in markers); raise SystemExit(0 if is_conda else 1)"
+    return $LASTEXITCODE -eq 0
+}
 
 function Test-PythonVersion {
     param(
@@ -30,7 +68,7 @@ function Test-PythonVersion {
     )
 
     try {
-        & $Program @Arguments -c "import struct, sys; raise SystemExit(0 if sys.version_info >= (3, 10) and struct.calcsize('P') * 8 == 64 else 1)"
+        & $Program @Arguments -c "import os, struct, sys; root = os.path.normcase(sys.base_prefix); markers = ('anaconda', 'miniconda', 'miniforge', 'mambaforge'); is_conda = os.path.isdir(os.path.join(sys.base_prefix, 'conda-meta')) or any(marker in root for marker in markers); supported = sys.version_info >= (3, 10) and struct.calcsize('P') * 8 == 64 and not is_conda; raise SystemExit(0 if supported else 1)"
         return $LASTEXITCODE -eq 0
     }
     catch {
@@ -55,6 +93,9 @@ function New-VenvWithPython {
 
 function New-ProjectEnvironment {
     if ($PythonCommand) {
+        if (Test-CondaBasePython -Program $PythonCommand -Arguments @()) {
+            throw "$PythonCommand is a Conda Python. Use an official python.org 64-bit Python 3.12 executable."
+        }
         if (-not (Test-PythonVersion -Program $PythonCommand -Arguments @())) {
             throw "$PythonCommand is not 64-bit Python 3.10 or newer."
         }
@@ -62,28 +103,74 @@ function New-ProjectEnvironment {
         return
     }
 
-    if (Get-Command py.exe -ErrorAction SilentlyContinue) {
+    $LauncherCandidates = New-Object System.Collections.Generic.List[string]
+    foreach ($Candidate in @(
+        (Join-Path $env:LocalAppData "Programs\Python\Launcher\py.exe"),
+        (Join-Path $env:SystemRoot "py.exe")
+    )) {
+        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+            $LauncherCandidates.Add($Candidate)
+        }
+    }
+
+    foreach ($Launcher in ($LauncherCandidates | Select-Object -Unique)) {
         # Python 3.12 is the primary clean-PC validation target. Fall back to
         # the newest installed supported Python when 3.12 is unavailable.
-        if (Test-PythonVersion -Program "py.exe" -Arguments @("-3.12")) {
-            New-VenvWithPython -Program "py.exe" -Arguments @("-3.12")
+        if (Test-PythonVersion -Program $Launcher -Arguments @("-3.12")) {
+            New-VenvWithPython -Program $Launcher -Arguments @("-3.12")
             return
         }
-        if (Test-PythonVersion -Program "py.exe" -Arguments @("-3")) {
-            New-VenvWithPython -Program "py.exe" -Arguments @("-3")
+        if (Test-PythonVersion -Program $Launcher -Arguments @("-3")) {
+            New-VenvWithPython -Program $Launcher -Arguments @("-3")
             return
         }
     }
 
-    if (
-        (Get-Command python.exe -ErrorAction SilentlyContinue) -and
-        (Test-PythonVersion -Program "python.exe" -Arguments @())
-    ) {
-        New-VenvWithPython -Program "python.exe" -Arguments @()
-        return
+    $PythonCandidates = New-Object System.Collections.Generic.List[string]
+    foreach ($Candidate in @(
+        (Join-Path $env:LocalAppData "Programs\Python\Python312\python.exe"),
+        (Join-Path $env:ProgramFiles "Python312\python.exe"),
+        "C:\Python312\python.exe"
+    )) {
+        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+            $PythonCandidates.Add($Candidate)
+        }
+    }
+    foreach ($SearchRoot in @(
+        (Join-Path $env:LocalAppData "Programs\Python"),
+        $env:ProgramFiles
+    )) {
+        if (-not $SearchRoot -or -not (Test-Path -LiteralPath $SearchRoot)) {
+            continue
+        }
+        Get-ChildItem -LiteralPath $SearchRoot -Directory -Filter "Python3*" |
+            Sort-Object Name -Descending |
+            ForEach-Object {
+                $Candidate = Join-Path $_.FullName "python.exe"
+                if (Test-Path -LiteralPath $Candidate -PathType Leaf) {
+                    $PythonCandidates.Add($Candidate)
+                }
+            }
+    }
+    foreach ($Entry in $OriginalPathEntries) {
+        $PathEntry = $Entry.Trim().Trim('"')
+        if (-not $PathEntry) {
+            continue
+        }
+        $Candidate = Join-Path $PathEntry "python.exe"
+        if (Test-Path -LiteralPath $Candidate -PathType Leaf) {
+            $PythonCandidates.Add($Candidate)
+        }
     }
 
-    throw "64-bit Python 3.10 or newer was not found. Install 64-bit Python 3.12 and run launchers\windows\setup_windows.bat again."
+    foreach ($Candidate in ($PythonCandidates | Select-Object -Unique)) {
+        if (Test-PythonVersion -Program $Candidate -Arguments @()) {
+            New-VenvWithPython -Program $Candidate -Arguments @()
+            return
+        }
+    }
+
+    throw "Official 64-bit CPython 3.10 or newer was not found. Conda Python cannot be used as the base of .venv. Install 64-bit Python 3.12 from https://www.python.org/downloads/windows/ and run setup again."
 }
 
 function Remove-ProjectEnvironment {
@@ -158,6 +245,10 @@ if ($Recreate) {
 
 if (-not (Test-Path -LiteralPath $EnvironmentPython -PathType Leaf)) {
     New-ProjectEnvironment
+}
+
+if (Test-CondaBasePython -Program $EnvironmentPython -Arguments @()) {
+    throw "The existing .venv was created from Conda Python. Install official 64-bit Python 3.12 and run setup_windows.bat -Recreate."
 }
 
 & $EnvironmentPython -c "import struct, sys; raise SystemExit(0 if sys.version_info >= (3, 10) and struct.calcsize('P') * 8 == 64 else 1)"

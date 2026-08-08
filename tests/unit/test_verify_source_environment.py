@@ -57,6 +57,20 @@ def test_main_uses_distinct_exit_code_for_qt_runtime_failure(
     assert "PySide6/Qt runtime" in captured.err
 
 
+def test_conda_backed_standard_venv_is_rejected() -> None:
+    assert verifier.is_conda_backed_venv(
+        prefix=r"C:\work\project\.venv",
+        base_prefix=r"C:\tools\miniconda3",
+    )
+
+
+def test_direct_conda_environment_is_not_misclassified_as_mixed_venv() -> None:
+    assert not verifier.is_conda_backed_venv(
+        prefix=r"C:\tools\miniconda3\envs\lidar-label-tool",
+        base_prefix=r"C:\tools\miniconda3\envs\lidar-label-tool",
+    )
+
+
 def test_windows_setup_and_launchers_keep_qt_repair_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
     setup = (project_root / "scripts" / "setup_windows.ps1").read_text(
@@ -74,7 +88,10 @@ def test_windows_setup_and_launchers_keep_qt_repair_contract() -> None:
     assert "--force-reinstall" in setup
     assert "Repair-LockedQtRuntime" in setup
     assert "Remove-ProjectEnvironment" in setup
+    assert "Test-CondaBasePython" in setup
+    assert "Ignoring active Conda environment" in setup
     assert "verify_source_environment.py" in run_gui
     assert "setup_windows.bat -Repair" in run_gui
+    assert 'set "CONDA_PREFIX="' in run_gui
     assert "verify_source_environment.py" in run_calibration
     assert "setup_windows.bat -Recreate" in run_calibration

@@ -449,9 +449,14 @@ dataset/
 Linux에서는 `./.venv/bin/python scripts/verify_source_environment.py`를 사용한다.
 소스 실행 중 처리되지 않은 오류는 run 스크립트를 실행한 terminal에 표시된다.
 
-Windows에서 `DLL load failed while importing QtWidgets` 또는 `지정된 프로시저를 찾을 수
-없습니다`가 표시되면 데이터셋 문제가 아니라 Python/Qt 실행 환경 문제다. 다른 PC에서 `.venv`를
-복사하지 말고 다음 순서로 복구한다.
+Windows에서 `DLL load failed while importing QtCore/QtWidgets` 또는 `지정된 프로시저를 찾을
+수 없습니다`가 표시되면 데이터셋 문제가 아니라 Python/Qt 실행 환경 문제다. 다른 PC에서
+`.venv`를 복사하지 말고 다음 순서로 복구한다.
+
+PowerShell 앞에 `(base)`가 있고 `py -3.12 --version`에서 `py 명령을 찾을 수 없습니다`가
+표시되면 Conda Python만 설치된 상태다. python.org에서 공식 Python 3.12 64-bit와 Python
+Launcher를 설치한 뒤 새 PowerShell을 연다. Windows setup/run 스크립트는 Conda Qt DLL 경로를
+자동으로 제거하고, Conda Python으로 생성된 `.venv`를 거부한다.
 
 ```powershell
 .\launchers\windows\setup_windows.bat -Repair

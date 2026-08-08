@@ -4,6 +4,16 @@ setlocal
 for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
 cd /d "%PROJECT_ROOT%"
 
+set "PATH=%SystemRoot%\System32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SystemRoot%\System32\WindowsPowerShell\v1.0"
+set "CONDA_PREFIX="
+set "CONDA_DEFAULT_ENV="
+set "CONDA_PROMPT_MODIFIER="
+set "CONDA_SHLVL="
+set "PYTHONHOME="
+set "PYTHONPATH="
+set "QT_PLUGIN_PATH="
+set "QML2_IMPORT_PATH="
+
 if not exist ".venv\Scripts\python.exe" (
     echo [ERROR] The project virtual environment was not found.
     echo Run launchers\windows\setup_windows.bat first.

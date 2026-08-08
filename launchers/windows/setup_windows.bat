@@ -4,7 +4,7 @@ setlocal
 for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
 cd /d "%PROJECT_ROOT%"
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\scripts\setup_windows.ps1" %*
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\scripts\setup_windows.ps1" %*
 if errorlevel 1 (
     echo.
     echo [ERROR] Environment setup failed. See docs\31_LAB_SOURCE_SETUP.md.

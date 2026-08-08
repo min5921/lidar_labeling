@@ -17,6 +17,8 @@
 
 기본 setup도 Qt DLL 검증 실패 시 잠금된 PySide6 runtime을 한 번 자동 복구한다. `-Recreate`는
 프로젝트 안의 생성된 `.venv`만 다시 만들며 데이터셋과 라벨은 건드리지 않는다.
+PowerShell 앞에 `(base)`가 표시되어도 Windows setup/run 스크립트는 Conda Qt DLL 경로를
+격리한다. 다만 `.venv`를 만들 공식 python.org CPython 3.12 64-bit는 별도로 설치되어 있어야 한다.
 
 ## Linux
 
