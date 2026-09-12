@@ -55,10 +55,17 @@ D25는 운영 GUI의 LiDAR 입력에 대해 D15~D17을 대체한다. LiDAR별 ca
 | D38 | Recovery와 lock identity | recovery는 frame scope, session lock은 profile/LiDAR namespace scope로 분리 |
 | D39 | 현재 배포 방식 | `codex/v2` source + lock 기반 `.venv`; Python 미설치 portable은 현재 운영 경로 아님 |
 | D40 | 프레임 간 수동 객체 연결 | 같은 profile에서 기준 객체를 기억하고 현재 frame에 복사 또는 기존 객체의 ID 연결; 단일 frame undo/원자 저장 |
+| D41 | 분할 폴더 간 객체 이어받기 | 같은 LiDAR·좌표계의 연속 데이터에서 이전 작업 JSON의 선택 객체를 현재 frame에 일괄 복사; 기존 ID는 건너뛰고 대상 frame identity 유지 |
 
 D40은 사용자가 명시적으로 연결한 작업 객체에 대해 D07의 ID 보존 예외다. 원본 source 파일과
 source metadata는 보존하고 이전 작업 ID를 연결 이력에 남긴다. 다른 frame들의 ID를 일괄
 변경하거나 자동으로 추적·보간하지 않는다.
+
+D41은 D40의 같은 profile 내 연결과 별도의 명시적 객체 복사다. dataset/profile ID가 달라도
+LiDAR ID, reference frame, 단위·축·yaw 계약이 같아야 하며 좌표 변환은 하지 않는다. 이전
+프레임의 ID·class·box·metadata를 보존하고, 현재 폴더의 frame/path/revision/provenance로 저장한다.
+전체 가져오기는 한 번의 Undo로 취소하며 이후 순차 다음 프레임 이어받기 대상에 포함한다.
+폴더 자동 전환, 자동 추적·보간, 전체 라벨 파일의 identity 변경은 이번 범위가 아니다.
 
 상세 규범은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`와 다음 schema를 따른다.
 

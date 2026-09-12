@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from lidar_label_tool.domain.labels import FrameLabel, LabeledObject
 
@@ -10,9 +10,18 @@ CREATED_BY_TOOL = "lidar_label_tool"
 
 
 def created_objects(objects: Iterable[LabeledObject]) -> tuple[LabeledObject, ...]:
-    """Return only objects explicitly created by this labeling tool."""
+    """Return tool-created objects and objects explicitly imported from another chunk."""
     return tuple(
-        obj for obj in objects if obj.source.get("created_by") == CREATED_BY_TOOL
+        obj for obj in objects
+        if obj.source.get("created_by") == CREATED_BY_TOOL or _was_explicitly_transferred(obj)
+    )
+
+
+def _was_explicitly_transferred(obj: LabeledObject) -> bool:
+    history = obj.extra_fields.get("object_transfer_history")
+    return isinstance(history, list) and any(
+        isinstance(entry, Mapping) and entry.get("operation") == "dataset_transfer"
+        for entry in history
     )
 
 

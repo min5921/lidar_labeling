@@ -461,6 +461,22 @@ ID가 있으면 거부한다. 기존 객체 연결은 class 일치가 필요하�
 복사/연결은 현재 frame의 단일 편집·undo이며 일반 원자 저장을 사용한다. 다른 frame의 파일이나
 원본 source 파일은 변경하지 않는다.
 
+분할 폴더의 연속 데이터를 위한 `이전 폴더의 객체 가져오기…`는 별도의 명시적 **객체 단위**
+복사다. 저장된 v1/v2 작업 JSON을 schema 검증한 뒤 선택 객체만 현재 frame에 추가한다.
+dataset/profile ID는 달라도 되지만 LiDAR ID와 reference frame이 같아야 하며 §5의 좌표·단위·yaw
+계약을 만족해야 한다. v1의 축 표기는 기존 v1 계약의 meter/radian/기하 중심 의미로 해석하며
+좌표를 변환하거나 새로운 단위를 추정하지 않는다. class key는 대상 catalog와 정확히 일치해야
+하고 자동 remapping은 하지 않는다. 현재 frame에 이미 있는 ID는 기존 객체를 유지하며 건너뛴다.
+
+추가 객체의 ID·class·box·attributes·source·unknown field는 보존하고, 현재 frame의 identity,
+point/image binding, provenance, calibration context와 revision은 유지한다. 선택적 object 확장
+필드 `object_transfer_history` 배열에 `operation: "dataset_transfer"`, `source_dataset_id`,
+`source_profile_id`(v1은 null), `source_frame_id`, `source_object_id`, `source_label_name`,
+`source_label_sha256`, `imported_at_utc`를 추가한다. 기존 이력을 보존하고 배열이 아닌 이력은 거부한다.
+미리보기 이후 source 파일 hash와 현재 frame snapshot/request generation을 다시 검사한다.
+전체 추가는 하나의 Undo이며 저장은 대상 repository만 수행한다. 이 이력이 있는 객체는 명시적
+이어받기 대상으로 취급한다. 원본 JSON에 기록된 데이터 경로를 따라가거나 source 파일을 쓰지 않는다.
+
 라벨 provenance에는 다음 fingerprint를 기록한다.
 
 - dataset manifest SHA-256
@@ -599,7 +615,8 @@ manifest validator와 preflight가 반드시 검사한다.
 - 파일 내용을 domain model로 읽기 전에 `schema_version`으로 parser와 repository를 dispatch한다.
 - v2 repository는 exact profile/LiDAR namespace의 v2 label만 읽고 쓴다. 손상된 v2 파일이 있으면
   v1/source label로 fallback하지 않으며, v2를 v1 writer로 저장하거나 메모리에서 자동 변환하지 않는다.
-- v1에서 v2로 쓰는 유일한 경로는 전용 migrator다.
+- v1 **전체 frame 라벨**을 v2로 이관하는 유일한 경로는 전용 migrator다. §12의 명시적 객체
+  가져오기는 대상 frame에 대한 편집이며 이전 frame 라벨의 identity/revision/provenance를 이관하지 않는다.
 - 새 구성 마법사는 v1을 생성하지 않는다.
 - v1 라벨은 dataset ID가 같고 대상 profile/LiDAR/reference frame/LiDAR binding이 하나로 증명되며
   대상 v2 파일이 없을 때만 사용자의 확인 후 이관할 수 있다.

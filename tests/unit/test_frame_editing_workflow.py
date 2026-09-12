@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from concurrent.futures import Future
 from dataclasses import replace
+import json
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QVector3D
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from lidar_label_tool.app.config import default_config_path
+from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.ui.main_window import MainWindow
+from lidar_label_tool.ui.object_transfer_dialog import ObjectTransferDialog
 from lidar_label_tool.workers.frame_loader import load_frame_payload
 from tests.fixture_builders import create_v2_dataset
 
@@ -217,12 +220,17 @@ def test_loading_blocks_link_edits_and_failure_restores_visible_frame(window):
     before = window.history.current
     assert not window.remember_object_button.isEnabled()
     assert not window.copy_reference_button.isEnabled()
+    assert not window.import_objects_button.isEnabled()
     window._copy_reference_to_frame()
     window._link_selected_to_reference()
+    with patch("lidar_label_tool.ui.main_window.QFileDialog.getOpenFileName") as picker:
+        window._import_previous_label_objects()
+        picker.assert_not_called()
     assert window.history.current == before
     window._show_load_error(window.request_generation, "000001", "missing")
     assert window.frame_combo.currentText() == "000000"
     assert window.remember_object_button.isEnabled()
+    assert window.import_objects_button.isEnabled()
 
 
 def test_stale_loaded_frame_does_not_reset_views_or_reference(window):
@@ -235,3 +243,69 @@ def test_stale_loaded_frame_does_not_reset_views_or_reference(window):
     assert window.payload.source.frame_id == "000000"
     assert window._object_link_reference is reference
     _assert_views_equal(window, expected)
+
+
+def _previous_folder_label(window, tmp_path):
+    objects = tuple(
+        LabeledObject(
+            f"track-{index}", "car", Box3D(index + 1, 2, 1, 4, 2, 1.6, 0),
+            source={"raw": {"id": f"track-{index}"}},
+        )
+        for index in range(2)
+    )
+    previous = replace(
+        window.history.current, dataset_id="previous_chunk", frame_id="000999",
+        revision=1, objects=objects, point_cloud_paths={"aeva": ("previous/000999.bin",)},
+    )
+    path = tmp_path / "이전 폴더 000999.json"
+    path.write_text(json.dumps(previous.to_dict()), encoding="utf-8")
+    return path
+
+
+def test_import_button_carries_multiple_objects_across_folder_boundary(window, tmp_path):
+    path = _previous_folder_label(window, tmp_path)
+    original_bytes = path.read_bytes()
+    with (
+        patch("lidar_label_tool.ui.main_window.QFileDialog.getOpenFileName", return_value=(str(path), "")),
+        patch.object(ObjectTransferDialog, "exec", return_value=QDialog.DialogCode.Accepted),
+    ):
+        window.import_objects_button.click()
+    assert [obj.id for obj in window.history.current.objects] == ["track-0", "track-1"]
+    assert window.history.current.frame_id == "000000"
+    assert window.history.current.dataset_id == "ds_fixture_v2"
+    window._undo()
+    assert window.history.current.objects == ()
+    window._redo()
+    assert len(window.history.current.objects) == 2
+    assert window._save_working_label()
+    saved = window.repository.load("000000")
+    assert [obj.id for obj in saved.objects] == ["track-0", "track-1"]
+    window._move_frame(1)
+    assert window.payload.source.frame_id == "000001"
+    assert [obj.id for obj in window.history.current.objects] == ["track-0", "track-1"]
+    assert path.read_bytes() == original_bytes
+
+
+@pytest.mark.parametrize("mode", ["cancel", "source_changed", "frame_changed"])
+def test_cancelled_or_stale_import_does_not_modify_current_label(window, tmp_path, mode):
+    path = _previous_folder_label(window, tmp_path)
+    before = window.history.current
+
+    def finish_dialog():
+        if mode == "cancel":
+            return QDialog.DialogCode.Rejected
+        if mode == "source_changed":
+            path.write_bytes(path.read_bytes() + b" ")
+        else:
+            window.request_generation += 1
+        return QDialog.DialogCode.Accepted
+
+    with (
+        patch("lidar_label_tool.ui.main_window.QFileDialog.getOpenFileName", return_value=(str(path), "")),
+        patch.object(ObjectTransferDialog, "exec", side_effect=finish_dialog),
+        patch.object(QMessageBox, "warning") as warning,
+    ):
+        window.import_objects_button.click()
+    assert window.history.current == before
+    assert not window.history.dirty
+    assert warning.call_count == (0 if mode == "cancel" else 1)

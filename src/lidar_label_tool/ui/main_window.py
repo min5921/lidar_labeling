@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
+import logging
 import math
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -14,7 +15,9 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -48,6 +51,7 @@ from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapte
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.adapters.frame_centric_waymo import WaymoFrameCentricAdapter
 from lidar_label_tool.io.labels.json_repository import LabelConflictError
+from lidar_label_tool.io.labels.object_source import SavedLabelObjectLoader
 from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
@@ -63,10 +67,12 @@ from lidar_label_tool.services.object_linking import (
     link_object_to_reference,
     remember_object,
 )
+from lidar_label_tool.services.object_transfer import apply_object_transfer
 from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.services.session_lock_v2 import V2SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
+from lidar_label_tool.ui.object_transfer_dialog import ObjectTransferDialog
 from lidar_label_tool.ui.render_cache import PointCloudRenderCache
 from lidar_label_tool.ui.views import (
     BevView,
@@ -271,11 +277,18 @@ class MainWindow(QMainWindow):
         buttons.addWidget(previous)
         buttons.addWidget(following)
         nav_layout.addLayout(buttons)
-        self.carry_forward_check = QCheckBox("새로 만든 박스를 다음 프레임으로 이어가기")
+        self.carry_forward_check = QCheckBox("만든/가져온 박스 다음 프레임으로 이어가기")
         self.carry_forward_check.setChecked(
             bool(self.config["editing"].get("carry_created_boxes_forward", True))
         )
         nav_layout.addWidget(self.carry_forward_check)
+        self.import_objects_button = QPushButton("이전 폴더의 객체 가져오기…")
+        self.import_objects_button.setToolTip(
+            "다음 폴더의 첫 프레임에서 이전 폴더의 마지막 작업 라벨 JSON을 선택하세요. "
+            "여러 객체를 같은 ID로 한꺼번에 가져옵니다."
+        )
+        self.import_objects_button.clicked.connect(self._import_previous_label_objects)
+        nav_layout.addWidget(self.import_objects_button)
         self.frame_info = QLabel()
         nav_layout.addWidget(self.frame_info)
         self.working_path_label = QLabel()
@@ -1424,6 +1437,7 @@ class MainWindow(QMainWindow):
         label = self._current_label()
         selected = self._selected_object()
         ready = label is not None and self.frame_combo.isEnabled()
+        self.import_objects_button.setEnabled(ready)
         reference = self._object_link_reference
         self.remember_object_button.setEnabled(ready and selected is not None)
         self.clear_reference_button.setEnabled(reference is not None)
@@ -1465,6 +1479,48 @@ class MainWindow(QMainWindow):
         self._update_object_link_controls()
         self.status_message.setText(
             f"{label.frame_id} · {selected.id[:12]} 연결 기준 기억됨 — 대상 프레임으로 이동하세요."
+        )
+
+    def _import_previous_label_objects(self) -> None:
+        target = self._current_label()
+        if target is None or not self.frame_combo.isEnabled():
+            return
+        generation = self.request_generation
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "이전 폴더의 마지막 작업 라벨 선택",
+            str(self.dataset_root.parent),
+            "작업 라벨 JSON (*.json)",
+        )
+        if not filename:
+            return
+        try:
+            source = SavedLabelObjectLoader().load(Path(filename))
+            dialog = ObjectTransferDialog(
+                source, target, (str(item["name"]) for item in self.config["classes"]), self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted or dialog.plan is None:
+                return
+            current = self._current_label()
+            if generation != self.request_generation or current is None:
+                raise ValueError("현재 프레임이 바뀌었습니다. 대상 프레임에서 다시 가져오세요.")
+            edited = apply_object_transfer(dialog.plan, current)
+        except (OSError, ValueError) as exc:
+            logging.getLogger(__name__).warning(
+                "Object transfer failed from %s", filename, exc_info=True,
+            )
+            self.status_message.setText(f"객체 가져오기 실패 — {exc}")
+            QMessageBox.warning(
+                self, "객체를 가져올 수 없음",
+                f"현재 라벨은 변경되지 않았습니다.\n\n{exc}",
+            )
+            return
+        additions = dialog.plan.additions
+        selected_id = additions[0].id if additions else self._selected_id()
+        self._apply_edited_label(edited, selected_id)
+        self.status_message.setText(
+            f"이전 폴더에서 {len(additions)}개 객체 가져옴 · "
+            f"기존 ID {len(dialog.plan.skipped_ids)}개 유지 · Ctrl+S로 저장"
         )
 
     def _clear_object_link_reference(self) -> None:

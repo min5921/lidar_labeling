@@ -67,6 +67,8 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 - 전체 3D 화면 투영 기반 박스 클릭 선택
 - 3D 객체 이름표와 BEV 이름·length×width 표시 토글
 - 신규 생성 객체의 순차 다음 프레임 이어받기와 ID 유지
+- 같은 LiDAR·좌표계의 분할 폴더 간 저장 객체 일괄 가져오기, 선택 미리보기, 중복 ID 건너뜀
+- 가져온 객체의 ID/metadata/이력 보존, 대상 frame identity 유지, 단일 Undo와 이후 순차 이어받기
 - 기준 객체 기억 후 이전/임의 frame에 같은 ID로 수동 복사, 기존 객체 ID 연결과 이력 보존
 - 전체 3D/BEV/측면의 저장·이전/다음·콤보 이동 시 시점 유지
 - Object Detail 3D 사용자 시점 유지, 신규 박스에서만 초기화
@@ -112,8 +114,9 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 225개 통과 (2026-09-12, 이번 커밋 범위)
-- 범용 v2 신규 모듈 mypy와 저장소 전체 Ruff 통과
+- 전체 unit/integration/schema 회귀 테스트 248개 통과 (2026-09-13, 이번 커밋 범위)
+- 전체 `src` mypy와 저장소 전체 Ruff 통과
+- 두 폴더 간 객체 가져오기·저장/재로드·순차 이어받기, 중복 ID/취소/파일 변경/저장 실패 보호 검증
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구
 - stale revision 저장 충돌 거부

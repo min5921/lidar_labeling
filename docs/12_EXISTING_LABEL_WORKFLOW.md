@@ -23,7 +23,9 @@ v2 repository는 `dataset_id`, `profile_id`, `label_lidar_id`, `frame_id`, `refe
 
 파일을 domain model로 읽기 전에 `schema_version`으로 v1/v2 parser와 repository를 분기한다.
 v2 파일은 v2 writer만 저장할 수 있고, v2 파일이 손상되어도 v1 작업 라벨이나 source label로
-조용히 fallback하지 않는다. v1을 v2로 쓰는 작업은 전용 migration service만 수행한다.
+조용히 fallback하지 않는다. v1 전체 frame 라벨의 v2 이관은 전용 migration service만 수행한다.
+별도의 `이전 폴더의 객체 가져오기…`는 저장된 v1/v2 JSON에서 선택 객체만 현재 frame에 추가하는
+편집이다. 같은 LiDAR·좌표계에서만 허용하고 source의 frame identity나 revision을 이관하지 않는다.
 
 첫 import 시 source path, source format, 원본 object ID를 provenance로 기록한다. 작업 라벨이 생긴 이후에는 앱 재실행 시 작업 라벨을 우선하여 이전 수정 결과가 사라지지 않게 한다.
 
@@ -44,6 +46,8 @@ v2 파일은 v2 writer만 저장할 수 있고, v2 파일이 손상되어도 v1 
 - 명시적인 프레임 간 ID 연결을 실행한 객체는 작업 ID를 바꿀 수 있다. 원래 source metadata와
   이전 ID는 보존하며 `object_link_history`에 기준 frame/ID와 함께 기록한다.
 - 새 객체는 UUID 문자열 ID를 만든다.
+- 분할 폴더에서 명시적으로 가져온 객체는 이전 ID·class·box·metadata를 유지하고 출처를
+  `object_transfer_history`에 남긴다. 현재 frame의 중복 ID는 덮어쓰지 않고 건너뛴다.
 - `TYPE_VEHICLE` → `Car`
 - `TYPE_PEDESTRIAN` → `Pedestrian`
 - `TYPE_CYCLIST` → `Cyclist`
