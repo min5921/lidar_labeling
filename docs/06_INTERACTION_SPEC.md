@@ -97,6 +97,7 @@
 | R / F | length 증가 / 감소 |
 | T / G | width 증가 / 감소 |
 | Y / H | height 증가 / 감소 |
+| B | 선택 box의 bottom을 footprint 안쪽 포인트 바닥에 맞춤 |
 | Ctrl+Z / Ctrl+Y | 현재 frame의 undo / redo |
 
 이동 단축키는 설정 가능한 step 값을 사용하며 텍스트 입력 focus에서는 비활성화한다.
@@ -112,3 +113,17 @@ Ctrl+Z, Ctrl+Y 등 기존 조합 단축키는 z 위치를 바꾸지 않는다.
 5. frame별 undo stack은 분리하며 화면에 없는 frame을 undo하지 않는다.
 6. 순차적으로 다음 프레임을 열 때 옵션이 켜져 있으면 도구에서 생성한 객체만 같은 ID로 이어받는다. 원본 import 객체는 자동 복제하지 않는다.
 7. Object Detail 3D 카메라 pose는 프레임 전환과 편집에서 유지하고 새 객체 생성 때만 기본 pose로 초기화한다.
+8. 전체 3D와 BEV/측면의 중심·시점·zoom은 저장, 이전/다음 이동, frame 콤보 이동에서 유지한다.
+   같은 객체를 선택 복원하거나 이어받을 때는 자동 focus를 실행하지 않는다. 직접 객체를
+   선택하거나 `선택 객체로 이동`을 누르면 기존 focus 동작을 사용한다.
+
+## 프레임 간 수동 객체 연결
+
+- 선택 객체를 `연결 기준으로 기억`한 뒤 이전/다음 또는 원하는 frame으로 이동한다.
+- `현재 프레임에 같은 ID로 복사`는 기억한 시점의 박스 하나를 추가한다.
+- `선택 객체를 기준 ID로 연결`은 현재 선택 박스의 ID만 기준 ID로 바꾸고 위치·크기·yaw·속성을 유지한다.
+- 현재 frame에 기준 ID가 이미 있으면 복사/다른 객체 연결을 막는다. 클래스가 다르면 ID 연결을 거부한다.
+- dataset/profile/LiDAR/reference frame을 넘는 연결은 금지한다. 같은 frame의 서로 다른 객체를 합치지 않는다.
+- 수동 복사와 연결은 현재 frame의 단일 undo 동작이며 일반 저장·복구 경로를 사용한다.
+- 기존 source metadata는 보존하고 변경 전 ID와 기준 frame ID를 `object_link_history`에 기록한다.
+- 연결 기준은 실행 중 기억한 snapshot이다. 모든 frame의 ID 일괄 변경, 자동 추적·보간은 수행하지 않는다.

@@ -67,8 +67,11 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 - 전체 3D 화면 투영 기반 박스 클릭 선택
 - 3D 객체 이름표와 BEV 이름·length×width 표시 토글
 - 신규 생성 객체의 순차 다음 프레임 이어받기와 ID 유지
+- 기준 객체 기억 후 이전/임의 frame에 같은 ID로 수동 복사, 기존 객체 ID 연결과 이력 보존
+- 전체 3D/BEV/측면의 저장·이전/다음·콤보 이동 시 시점 유지
 - Object Detail 3D 사용자 시점 유지, 신규 박스에서만 초기화
 - W/A/S/D x/y 위치, Space/Ctrl 단독 z 위치, R/F·T/G·Y/H 크기, 좌우 방향키 프레임 단축키
+- B 단축키로 선택 박스 포인트 바닥 맞춤, 수치 입력/로드 중 실행 차단
 - 센서/return별 point cloud 로드 오류 격리와 구조화된 `sensor_errors`
 - reference layer별 JSON 오류 격리와 `reference_layer_errors`
 - 센서별 Not required/Applied/Missing/Invalid/Disabled/Load failed/Unknown 표시
@@ -109,7 +112,7 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 202개 통과
+- 전체 unit/integration/schema 회귀 테스트 225개 통과 (2026-09-12, 이번 커밋 범위)
 - 범용 v2 신규 모듈 mypy와 저장소 전체 Ruff 통과
 - 원본 source label hash 비변경
 - working label revision 1→2와 `.bak` 복구

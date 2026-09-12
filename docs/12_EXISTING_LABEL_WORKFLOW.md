@@ -41,6 +41,8 @@ v2 파일은 v2 writer만 저장할 수 있고, v2 파일이 손상되어도 v1 
 ## ID와 class
 
 - source 문자열 ID를 그대로 보존한다.
+- 명시적인 프레임 간 ID 연결을 실행한 객체는 작업 ID를 바꿀 수 있다. 원래 source metadata와
+  이전 ID는 보존하며 `object_link_history`에 기준 frame/ID와 함께 기록한다.
 - 새 객체는 UUID 문자열 ID를 만든다.
 - `TYPE_VEHICLE` → `Car`
 - `TYPE_PEDESTRIAN` → `Pedestrian`

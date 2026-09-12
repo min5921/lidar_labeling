@@ -63,6 +63,12 @@
 
 frame을 보기만 하면 `unvisited`를 유지하고, 첫 편집 시 `in_progress`가 된다. 사용자가 명시적으로 완료 표시하면 `reviewed`가 된다. 단순히 다음 frame으로 이동했다고 자동 완료 처리하지 않는다.
 
+수동 프레임 연결은 기준 객체 snapshot을 기억한 뒤 현재 frame에 같은 ID로 복사하거나 선택
+객체의 ID를 연결하는 편집이다. 중복 ID, 서로 다른 클래스의 연결, profile/LiDAR 좌표계가 다른
+연결을 막는다. 위치·크기·원본 metadata와 이전 ID 이력을 보존하고 현재 frame의 Undo·저장·복구
+경로를 사용한다. frame 로드 중에는 연결을 비활성화하며 로드 실패 시 프레임 표시도 기존
+화면으로 복원한다.
+
 frame panel은 전체/검토 완료/수정됨/오류/건너뜀 개수와 빠른 필터를 제공한다. `다음 미검토 frame` 이동 버튼을 둔다.
 
 ## 5. 저장과 복구
@@ -117,6 +123,7 @@ frame panel은 전체/검토 완료/수정됨/오류/건너뜀 개수와 빠른 
 ## 9. View 편의
 
 - 3D/BEV/side camera pose와 zoom을 frame 이동 시 유지
+- frame 전환의 선택 복원/박스 이어받기는 자동 focus를 실행하지 않음
 - 각 view에 reset/focus-selected 버튼
 - splitter 크기와 마지막 active camera를 사용자 설정에 저장
 - sensor별 색상 legend와 point size 조절

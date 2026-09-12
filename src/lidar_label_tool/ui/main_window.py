@@ -56,6 +56,13 @@ from lidar_label_tool.services.frame_session import (
     compare_label_context,
     refresh_label_context,
 )
+from lidar_label_tool.services.object_linking import (
+    ObjectLinkError,
+    ObjectLinkReference,
+    copy_reference_object,
+    link_object_to_reference,
+    remember_object,
+)
 from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.services.session_lock_v2 import V2SessionLock
@@ -154,6 +161,7 @@ class MainWindow(QMainWindow):
         self._pending_carried_selection: str | None = None
         self._detail_reset_requested = False
         self._suppress_auto_focus = False
+        self._object_link_reference: ObjectLinkReference | None = None
         self._rendered_point_count = 0
         self._control_only_pending = False
         self._application_event_filter_installed = False
@@ -442,6 +450,35 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self._save_working_label)
         layout.addWidget(self.object_editor_panel)
 
+        link_group = QGroupBox("프레임 간 객체 연결")
+        link_layout = QVBoxLayout(link_group)
+        self.remember_object_button = QPushButton("선택 객체를 연결 기준으로 기억")
+        self.remember_object_button.clicked.connect(self._remember_selected_object)
+        link_layout.addWidget(self.remember_object_button)
+        self.link_reference_label = QLabel("연결 기준 없음")
+        self.link_reference_label.setWordWrap(True)
+        link_layout.addWidget(self.link_reference_label)
+        self.copy_reference_button = QPushButton("현재 프레임에 같은 ID로 복사")
+        self.copy_reference_button.clicked.connect(self._copy_reference_to_frame)
+        link_layout.addWidget(self.copy_reference_button)
+        self.link_object_button = QPushButton("선택 객체를 기준 ID로 연결")
+        self.link_object_button.setToolTip(
+            "현재 선택한 박스의 위치·크기는 유지하고 기준 객체와 같은 ID로 연결합니다. Ctrl+Z: 취소"
+        )
+        self.link_object_button.clicked.connect(self._link_selected_to_reference)
+        link_layout.addWidget(self.link_object_button)
+        self.clear_reference_button = QPushButton("연결 기준 해제")
+        self.clear_reference_button.clicked.connect(self._clear_object_link_reference)
+        link_layout.addWidget(self.clear_reference_button)
+        link_help = QLabel(
+            "기준을 기억한 뒤 이전/다음 프레임으로 이동하세요.\n"
+            "박스가 없으면 복사, 이미 만들었다면 그 박스를 선택해 ID를 연결하세요."
+        )
+        link_help.setWordWrap(True)
+        link_layout.addWidget(link_help)
+        layout.addWidget(link_group)
+        self._update_object_link_controls()
+
         quick_help = QGroupBox("빠른 사용법")
         quick_help_layout = QVBoxLayout(quick_help)
         help_text = QLabel(
@@ -450,7 +487,8 @@ class MainWindow(QMainWindow):
             "3. Space/Ctrl 단독: 위/아래 · R/F: 길이 · T/G: 폭 · Y/H: 높이\n"
             "4. ←/→: 이전/다음 프레임\n"
             "5. ‘새 박스 만들기’ 후 열린 BEV에서 위치 클릭\n"
-            "6. Ctrl+S 저장 · Ctrl+Z 되돌리기"
+            "6. B: 포인트 바닥 맞춤\n"
+            "7. Ctrl+S 저장 · Ctrl+Z 되돌리기"
         )
         help_text.setWordWrap(True)
         quick_help_layout.addWidget(help_text)
@@ -492,6 +530,7 @@ class MainWindow(QMainWindow):
         add(QKeySequence.StandardKey.Undo, self._shortcut_undo)
         add(QKeySequence.StandardKey.Redo, self._shortcut_redo)
         add(QKeySequence(Qt.Key.Key_Delete), self._shortcut_delete)
+        add(QKeySequence(Qt.Key.Key_B), self._shortcut_fit_floor)
         add(
             QKeySequence(Qt.Key.Key_Space),
             lambda: self._nudge_selected("z", 1.0),
@@ -592,6 +631,7 @@ class MainWindow(QMainWindow):
         request = self.request_generation
         self.status_message.setText(f"{frame_id} 불러오는 중…")
         self.frame_combo.setEnabled(False)
+        self._update_object_link_controls()
         future = self.executor.submit(
             load_frame_payload,
             self.adapter,
@@ -655,9 +695,14 @@ class MainWindow(QMainWindow):
         self.working_path_label.setText(f"작업 저장: {display_path}")
         self.working_path_label.setToolTip(str(working_path))
         self._populate_cameras(payload)
-        self._populate_objects(current_label.objects)
-        if carried_selection is not None:
-            self._select_object_id(carried_selection)
+        # Restoring a selection is not an explicit request to recenter the views.
+        self._suppress_auto_focus = True
+        try:
+            self._populate_objects(current_label.objects)
+            if carried_selection is not None:
+                self._select_object_id(carried_selection)
+        finally:
+            self._suppress_auto_focus = False
         self._update_sensor_status(payload)
         self._render_all()
         self._update_editor()
@@ -843,7 +888,12 @@ class MainWindow(QMainWindow):
         if request != self.request_generation:
             return
         self.frame_combo.setEnabled(True)
+        if self.payload is not None:
+            self.frame_combo.blockSignals(True)
+            self.frame_combo.setCurrentText(self.payload.source.frame_id)
+            self.frame_combo.blockSignals(False)
         self._clear_pending_carry()
+        self._update_object_link_controls()
         self.status_message.setText(f"{frame_id} 로드 실패 — {message}")
 
     def _populate_cameras(self, payload: FrameLoadPayload) -> None:
@@ -1183,6 +1233,7 @@ class MainWindow(QMainWindow):
         if selected is None:
             selected = self._selected_object()
         enabled = selected is not None
+        self._update_object_link_controls()
         self._updating_editor = True
         try:
             self.class_combo.setEnabled(enabled)
@@ -1347,6 +1398,8 @@ class MainWindow(QMainWindow):
         )
 
     def _fit_selected_box_to_points(self, *_: Any) -> None:
+        if not self.frame_combo.isEnabled():
+            return
         selected = self._selected_object()
         label = self._current_label()
         if selected is None or label is None:
@@ -1365,6 +1418,95 @@ class MainWindow(QMainWindow):
         )
         self.status_message.setText(
             f"{selected.class_name} {selected.id[:8]} z를 포인트 바닥 기준으로 보정했습니다."
+        )
+
+    def _update_object_link_controls(self) -> None:
+        label = self._current_label()
+        selected = self._selected_object()
+        ready = label is not None and self.frame_combo.isEnabled()
+        reference = self._object_link_reference
+        self.remember_object_button.setEnabled(ready and selected is not None)
+        self.clear_reference_button.setEnabled(reference is not None)
+        available = bool(
+            ready
+            and reference is not None
+            and label is not None
+            and not any(obj.id == reference.obj.id for obj in label.objects)
+        )
+        self.copy_reference_button.setEnabled(available)
+        self.copy_reference_button.setToolTip(
+            "기억한 시점의 박스를 같은 ID로 복사합니다. 현재 프레임에 그 ID가 있으면 복사하지 않습니다."
+        )
+        self.link_object_button.setEnabled(
+            available
+            and selected is not None
+            and reference is not None
+            and label is not None
+            and label.frame_id != reference.frame_id
+        )
+        if reference is None:
+            self.link_reference_label.setText("연결 기준 없음")
+            self.link_reference_label.setToolTip("")
+        else:
+            self.link_reference_label.setText(
+                f"기준 프레임: {reference.frame_id}\n"
+                f"{reference.obj.class_name} · {reference.obj.id[:12]}"
+            )
+            self.link_reference_label.setToolTip(f"기준 객체 ID: {reference.obj.id}")
+
+    def _remember_selected_object(self) -> None:
+        label = self._current_label()
+        selected = self._selected_object()
+        if label is None or selected is None or not self.frame_combo.isEnabled():
+            return
+        self._object_link_reference = remember_object(
+            label, selected.id, profile_id=self.index.profile_id
+        )
+        self._update_object_link_controls()
+        self.status_message.setText(
+            f"{label.frame_id} · {selected.id[:12]} 연결 기준 기억됨 — 대상 프레임으로 이동하세요."
+        )
+
+    def _clear_object_link_reference(self) -> None:
+        self._object_link_reference = None
+        self._update_object_link_controls()
+
+    def _copy_reference_to_frame(self) -> None:
+        label = self._current_label()
+        reference = self._object_link_reference
+        if label is None or reference is None or not self.frame_combo.isEnabled():
+            return
+        try:
+            edited = copy_reference_object(label, reference, profile_id=self.index.profile_id)
+        except ObjectLinkError as exc:
+            self.status_message.setText(f"객체 복사 실패 — {exc}")
+            return
+        self._apply_edited_label(edited, reference.obj.id)
+        self.status_message.setText(
+            f"{reference.frame_id} → {label.frame_id} · 같은 ID로 복사했습니다. "
+            "현재 포인트에 맞게 위치를 조정하세요."
+        )
+
+    def _link_selected_to_reference(self) -> None:
+        label = self._current_label()
+        selected = self._selected_object()
+        reference = self._object_link_reference
+        if (
+            label is None or selected is None or reference is None
+            or not self.frame_combo.isEnabled()
+        ):
+            return
+        try:
+            edited = link_object_to_reference(
+                label, selected.id, reference, profile_id=self.index.profile_id
+            )
+        except ObjectLinkError as exc:
+            self.status_message.setText(f"객체 연결 실패 — {exc}")
+            return
+        self._apply_edited_label(edited, reference.obj.id)
+        self.status_message.setText(
+            f"현재 프레임 객체 ID: {selected.id[:12]} → {reference.obj.id[:12]} · "
+            "연결됨 · Ctrl+Z로 취소"
         )
 
     def _delete_selected(self, *_: Any) -> None:
@@ -1637,6 +1779,10 @@ class MainWindow(QMainWindow):
     def _shortcut_undo(self) -> None:
         if not self._text_input_focused():
             self._undo()
+
+    def _shortcut_fit_floor(self) -> None:
+        if not self._shortcut_blocked() and self.frame_combo.isEnabled():
+            self._fit_selected_box_to_points()
 
     def _shortcut_redo(self) -> None:
         if not self._text_input_focused():

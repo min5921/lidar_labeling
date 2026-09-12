@@ -54,6 +54,11 @@ D25는 운영 GUI의 LiDAR 입력에 대해 D15~D17을 대체한다. LiDAR별 ca
 | D37 | Dataset taxonomy | v2는 stable `class_id`와 별도 `taxonomy.json`을 사용 |
 | D38 | Recovery와 lock identity | recovery는 frame scope, session lock은 profile/LiDAR namespace scope로 분리 |
 | D39 | 현재 배포 방식 | `codex/v2` source + lock 기반 `.venv`; Python 미설치 portable은 현재 운영 경로 아님 |
+| D40 | 프레임 간 수동 객체 연결 | 같은 profile에서 기준 객체를 기억하고 현재 frame에 복사 또는 기존 객체의 ID 연결; 단일 frame undo/원자 저장 |
+
+D40은 사용자가 명시적으로 연결한 작업 객체에 대해 D07의 ID 보존 예외다. 원본 source 파일과
+source metadata는 보존하고 이전 작업 ID를 연결 이력에 남긴다. 다른 frame들의 ID를 일괄
+변경하거나 자동으로 추적·보간하지 않는다.
 
 상세 규범은 `docs/32_GENERIC_DATASET_V2_CONTRACT.md`와 다음 schema를 따른다.
 

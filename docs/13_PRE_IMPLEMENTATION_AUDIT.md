@@ -202,7 +202,7 @@
 ## P2 — 후속 개선
 
 - 자동 calibration 추정 및 정렬 품질 metric
-- 프레임 보간과 tracking workflow
+- 프레임 보간과 자동 tracking workflow (수동 박스 복사·ID 연결은 현재 지원)
 - 여러 카메라 동시 mosaic
 - 자동 업데이트와 코드 서명
 - 협업 서버와 실제 다중 사용자 locking

@@ -450,6 +450,17 @@ external namespace_root = <workspace_root>/<dataset_id>
 - `coordinate_system`
 - `frame_id -> label_lidar_sample_id -> point_cloud_path` 결합
 
+프레임 간 수동 객체 연결은 위 frame/profile identity를 바꾸지 않는다. 사용자가 기준 객체를
+기억하고 명시적으로 실행한 경우에만 현재 frame의 object `id`를 기준 ID로 변경하거나 박스를
+복사할 수 있다. 같은 profile/LiDAR/reference frame 안에서만 허용하며 대상 frame에 이미 같은
+ID가 있으면 거부한다. 기존 객체 연결은 class 일치가 필요하고 box/attributes/source는 보존한다.
+
+선택적 object 확장 필드 `object_link_history`는 순서가 있는 배열이며 각 항목에 `operation`
+(`copy`/`link`), `previous_object_id`, `reference_object_id`, `reference_frame_id`, `linked_at_utc`를
+기록한다. 기존 이력과 알 수 없는 field를 유지하고 잘못된 기존 이력 형식은 덮어쓰지 않는다.
+복사/연결은 현재 frame의 단일 편집·undo이며 일반 원자 저장을 사용한다. 다른 frame의 파일이나
+원본 source 파일은 변경하지 않는다.
+
 라벨 provenance에는 다음 fingerprint를 기록한다.
 
 - dataset manifest SHA-256
