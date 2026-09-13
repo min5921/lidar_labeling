@@ -126,7 +126,7 @@ class DatasetProfileAddV2Tests(unittest.TestCase):
                 source: str | os.PathLike[str],
                 target: str | os.PathLike[str],
             ) -> None:
-                if Path(target) == manifest_path:
+                if Path(target).resolve() == manifest_path.resolve():
                     raise OSError("injected manifest replace failure")
                 real_replace(source, target)
 

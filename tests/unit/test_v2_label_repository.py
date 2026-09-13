@@ -94,7 +94,7 @@ class V2LabelRepositoryTests(unittest.TestCase):
             self.assertEqual(document["objects"][0]["class_id"], "car")
             self.assertEqual(
                 repository.path_for("000000").parent,
-                root / "annotations" / "lidar_label_tool" / "aeva_profile" / "aeva",
+                (root / "annotations" / "lidar_label_tool" / "aeva_profile" / "aeva").resolve(),
             )
 
     def test_missing_camera_file_does_not_block_lidar_label_save(self) -> None:

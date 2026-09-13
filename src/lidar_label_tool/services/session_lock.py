@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sys
 from typing import Any, Callable, Literal, Mapping
 from uuid import uuid4
 
@@ -101,7 +102,7 @@ def _pid_is_running(pid: int) -> bool:
         return False
     if pid == os.getpid():
         return True
-    if os.name == "nt":
+    if sys.platform == "win32":
         import ctypes
 
         process_query_limited_information = 0x1000

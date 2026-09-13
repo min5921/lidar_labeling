@@ -202,7 +202,7 @@ class DatasetResyncV2Tests(unittest.TestCase):
                 src: str | os.PathLike[str],
                 dst: str | os.PathLike[str],
             ) -> None:
-                if Path(dst) == manifest_path:
+                if Path(dst).resolve() == manifest_path.resolve():
                     raise OSError("injected resync commit failure")
                 real_replace(src, dst)
 
