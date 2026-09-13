@@ -29,6 +29,7 @@ from lidar_label_tool.io.json_schema import (
     validate_json_document,
 )
 from lidar_label_tool.geometry.transforms import validate_rigid_transform
+from lidar_label_tool.services.background_task import TaskControl
 from lidar_label_tool.services.timestamp_table import (
     TimestampTable,
     TimestampTableError,
@@ -143,8 +144,11 @@ def validate_dataset_v2(
     *,
     schema_root: Path | None = None,
     verify_images: bool = True,
+    task: TaskControl | None = None,
 ) -> DatasetV2ValidationReport:
     """Validate one v2 configuration root without modifying source or config files."""
+    task = task or TaskControl()
+    task.check_cancelled()
     root = Path(config_root).resolve()
     try:
         manifest = load_dataset_manifest_v2(root, schema_root=schema_root)
@@ -168,6 +172,7 @@ def validate_dataset_v2(
         manifest,
         schema_root,
         verify_images=verify_images,
+        task=task,
     ).run()
 
 
@@ -177,6 +182,7 @@ def validate_dataset_manifest_v2(
     *,
     schema_root: Path | None = None,
     verify_images: bool = True,
+    task: TaskControl | None = None,
 ) -> DatasetV2ValidationReport:
     """Validate an uncommitted manifest against files under a configuration root."""
     return _DatasetV2Validator(
@@ -184,6 +190,7 @@ def validate_dataset_manifest_v2(
         manifest,
         schema_root,
         verify_images=verify_images,
+        task=task,
     ).run()
 
 
@@ -195,11 +202,13 @@ class _DatasetV2Validator:
         schema_root: Path | None,
         *,
         verify_images: bool,
+        task: TaskControl | None = None,
     ) -> None:
         self.config_root = config_root
         self.manifest = manifest
         self.schema_root = schema_root
         self.verify_images = verify_images
+        self.task = task or TaskControl()
         self.data_root: Path | None = None
         self.taxonomy: TaxonomyV2 | None = None
         self.frame_indexes: list[ProfileFrameIndexV2] = []
@@ -208,12 +217,15 @@ class _DatasetV2Validator:
         self.issues: list[DatasetV2ValidationIssue] = []
 
     def run(self) -> DatasetV2ValidationReport:
+        self.task.report("v2_validation", 0, 0, "v2 계약 확인 중")
         self.data_root = self._resolve_data_root()
         self._validate_manifest_relations()
         self._validate_timestamp_sources()
         self._load_and_validate_taxonomy()
         for profile in self.manifest.profiles:
+            self.task.check_cancelled()
             self._validate_profile(profile)
+        self.task.check_cancelled()
         return DatasetV2ValidationReport(
             config_root=self.config_root,
             data_root=self.data_root,
@@ -590,6 +602,10 @@ class _DatasetV2Validator:
         camera_usage: Counter[str] = Counter()
         camera_sequence: list[str | None] = []
         for expected_ordinal, record in enumerate(records):
+            self.task.report(
+                "v2_validation", expected_ordinal, len(records),
+                f"v2 검증: {profile.id} / {record.frame_id}",
+            )
             if record.ordinal != expected_ordinal:
                 self._record_issue(
                     "frame_ordinal_invalid",

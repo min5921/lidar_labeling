@@ -624,8 +624,10 @@ manifest validator와 preflight가 반드시 검사한다.
 
 ## 16. v1 호환과 migration
 
-아래 전체-frame migration은 구현 시 지켜야 할 계약이며, 현재 전용 migrator/실행 메뉴가
-완성되었다는 뜻은 아니다. 현재 제공하는 §12의 객체 단위 가져오기와 구분한다.
+아래는 전체-frame migration 계약이다. v0.4.0의 전용 메뉴와 `migrate-labels-v2` CLI는
+**이미 구성된 v2 대상**으로의 명시적 이전을 지원한다. §12 객체 단위 가져오기와 구분한다.
+새 manifest 생성·unsafe legacy ID 자동 치환과 좌표 변환/재번호는 후속 확장 범위이며,
+현재 구현은 이 경우 자동 추측하지 않고 중단한다.
 
 - 기존 `dataset.json` 1.0과 `label.schema.json` 1.0은 계속 읽는다.
 - 파일 내용을 domain model로 읽기 전에 `schema_version`으로 parser와 repository를 dispatch한다.
@@ -655,6 +657,13 @@ migration 시각, tool version, class mapping hash를 기록한다. 전체 결�
 semantic validator로 검사한 뒤 활성화하고 report를 저장한다. 대상 v2 파일이 이미 있고 같은 source
 hash의 완료 report가 있으면 `already_migrated`로 끝내며 다시 쓰지 않는다. 그 외 기존 target은
 충돌로 처리한다.
+
+현재 구현은 target 파일뿐 아니라 기존 namespace 전체(빈 폴더 포함)를 보호한다. source의
+단일 LiDAR ID/point 경로·실제 내용이 대상과 같아야 하며 class mapping은 전부 명시한다.
+안전한 source dataset ID는 변경할 수 없다. unsafe ID는 기존 target manifest metadata의
+명시 legacy binding과 요청 값이 모두 일치할 때만 허용하며 위 새 ID 생성 절차는 아직 자동화하지
+않는다. Linux는 `renameat2(RENAME_NOREPLACE)`, Windows는 비덮어쓰기 directory rename을 사용한다.
+다른 파일시스템/OS에서 안전한 활성화를 보장할 수 없으면 실패한다.
 
 ## 17. 완료 불변식
 

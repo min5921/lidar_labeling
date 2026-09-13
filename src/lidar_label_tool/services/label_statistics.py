@@ -13,6 +13,7 @@ from lidar_label_tool.io.adapters.factory import open_dataset_adapter
 from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.recovery_factory import open_recovery_store
+from lidar_label_tool.services.background_task import TaskControl
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,8 +59,11 @@ def collect_label_statistics(
     working: bool = False,
     workspace_root: Path | None = None,
     profile_id: str | None = None,
+    task: TaskControl | None = None,
 ) -> LabelStatistics:
     """Collect source-only or working-only frame statistics without writing data."""
+    task = task or TaskControl()
+    task.report("scan", 0, 0, "데이터셋 구조 확인 중")
     root = Path(dataset_root).resolve()
     adapter = open_dataset_adapter(root, profile_id=profile_id)
     index = adapter.scan()
@@ -82,7 +86,8 @@ def collect_label_statistics(
     source_label_count = 0
     working_label_count = 0
 
-    for frame_id in index.frame_ids:
+    for ordinal, frame_id in enumerate(index.frame_ids):
+        task.report("statistics", ordinal, index.frame_count, f"라벨 통계: {frame_id}")
         source = adapter.load_source_frame(frame_id)
         if "laser" in source.source_label_paths:
             source_label_count += 1
@@ -140,6 +145,7 @@ def collect_label_statistics(
     )
     frame_count = index.frame_count
     object_count = sum(object_counts)
+    task.check_cancelled()
     return LabelStatistics(
         dataset_id=index.dataset_id,
         mode="working" if working else "source",

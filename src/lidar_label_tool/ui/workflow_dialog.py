@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 import sys
 import traceback
-from typing import Any, TypeVar, cast
+from typing import Any
 
-from PySide6.QtCore import QObject, QSettings, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QSettings, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -35,7 +35,7 @@ from lidar_label_tool.app.config import load_config
 from lidar_label_tool.app.runtime_paths import user_settings_path
 from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
 from lidar_label_tool.services.dataset_profiles import list_dataset_profiles
-from lidar_label_tool.services.label_export import export_dataset_labels
+from lidar_label_tool.services.label_export import export_dataset_labels, parse_export_class_mapping
 from lidar_label_tool.services.label_statistics import collect_label_statistics
 from lidar_label_tool.services.one_chip_conversion import (
     CancellationToken,
@@ -50,9 +50,8 @@ from lidar_label_tool.services.one_chip_calibration_verification import (
 )
 from lidar_label_tool.ui.dataset_resync_dialog import DatasetResyncV2Dialog
 from lidar_label_tool.ui.dataset_profile_add_dialog import DatasetProfileAddDialog
-
-
-_TaskResult = TypeVar("_TaskResult")
+from lidar_label_tool.ui.label_migration_dialog import LabelMigrationV2Dialog
+from lidar_label_tool.ui.task_dialog import run_task as _run_task
 
 
 class _ConversionWorker(QObject):
@@ -88,92 +87,8 @@ class _ConversionWorker(QObject):
             self.failed.emit(f"{type(exc).__name__}: {exc}", traceback.format_exc())
 
 
-class _CallableWorker(QObject):
-    succeeded = Signal(object)
-    failed = Signal(str, str)
-
-    def __init__(self, task: Callable[[], object]) -> None:
-        super().__init__()
-        self.task = task
-
-    @Slot()
-    def run(self) -> None:
-        try:
-            self.succeeded.emit(self.task())
-        except Exception as exc:  # noqa: BLE001 - worker boundary
-            self.failed.emit(f"{type(exc).__name__}: {exc}", traceback.format_exc())
-
-
-class _BusyTaskDialog(QDialog):
-    def __init__(self, parent: QWidget, title: str, task: Callable[[], object]) -> None:
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setModal(True)
-        self.setMinimumWidth(460)
-        self.result_value: object | None = None
-        self.error_summary: str | None = None
-        self.error_details: str | None = None
-
-        layout = QVBoxLayout(self)
-        self.status = QLabel("작업 중")
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        layout.addWidget(self.status)
-        layout.addWidget(self.progress)
-
-        self._task_thread = QThread(self)
-        self.worker = _CallableWorker(task)
-        self.worker.moveToThread(self._task_thread)
-        self._task_thread.started.connect(self.worker.run)
-        self.worker.succeeded.connect(self._succeeded)
-        self.worker.failed.connect(self._failed)
-        self.worker.succeeded.connect(self._task_thread.quit)
-        self.worker.failed.connect(self._task_thread.quit)
-        self._task_thread.finished.connect(self.worker.deleteLater)
-        self._task_thread.finished.connect(self._thread_finished)
-        QTimer.singleShot(0, self._task_thread.start)
-
-    @Slot(object)
-    def _succeeded(self, result: object) -> None:
-        self.result_value = result
-        self.status.setText("완료")
-
-    @Slot(str, str)
-    def _failed(self, summary: str, details: str) -> None:
-        self.error_summary = summary
-        self.error_details = details
-        self.status.setText("실패")
-
-    @Slot()
-    def _thread_finished(self) -> None:
-        if self.error_summary is None:
-            QDialog.accept(self)
-        else:
-            QDialog.reject(self)
-
-    def reject(self) -> None:
-        if self._task_thread.isRunning():
-            return
-        super().reject()
-
-
-def _run_task(
-    parent: QWidget,
-    title: str,
-    task: Callable[[], _TaskResult],
-) -> _TaskResult | None:
-    dialog = _BusyTaskDialog(parent, title, task)
-    dialog.exec()
-    if dialog.error_summary:
-        message = QMessageBox(QMessageBox.Icon.Critical, title, dialog.error_summary, parent=parent)
-        message.setDetailedText(dialog.error_details or "")
-        message.exec()
-        return None
-    return cast(_TaskResult, dialog.result_value)
-
-
 def _choose_task_profile(parent: QWidget, dataset: Path) -> tuple[bool, str | None]:
-    profiles = _run_task(parent, "LiDAR profile 확인", lambda: list_dataset_profiles(dataset))
+    profiles = _run_task(parent, "LiDAR profile 확인", lambda _control: list_dataset_profiles(dataset))
     if profiles is None:
         return False, None
     if not profiles:
@@ -522,12 +437,18 @@ class LabelExportDialog(QDialog):
         self.workspace_row = _PathRow(self._browse_workspace, placeholder="선택 사항")
         self.output_row = _PathRow(self._browse_output)
         self.format_combo = QComboBox()
-        self.format_combo.addItems(["lidar_label_json", "centerpoint_intermediate_json"])
+        self.format_combo.addItems([
+            "lidar_label_json", "centerpoint_intermediate_json", "source_laser_json",
+        ])
+        self.class_mapping = QPlainTextEdit()
+        self.class_mapping.setPlaceholderText("source 형식 선택 시 선택적 명시 매핑\ncar = TYPE_VEHICLE")
+        self.class_mapping.setMaximumHeight(90)
         self.frames = QLineEdit()
         self.frames.setPlaceholderText("비우면 전체, 여러 개는 쉼표로 구분")
         form.addRow("Dataset", self.dataset_row)
         form.addRow("Workspace", self.workspace_row)
         form.addRow("형식", self.format_combo)
+        form.addRow("Source 클래스 매핑", self.class_mapping)
         form.addRow("Frame ID", self.frames)
         form.addRow("출력", self.output_row)
         layout.addLayout(form)
@@ -570,10 +491,25 @@ class LabelExportDialog(QDialog):
         if not accepted:
             return
         export_format = self.format_combo.currentText()
+        try:
+            mapping = parse_export_class_mapping(self.class_mapping.toPlainText())
+        except ValueError as exc:
+            QMessageBox.warning(self, "클래스 매핑 확인", str(exc))
+            return
+        if export_format == "source_laser_json" and QMessageBox.question(
+            self, "Source JSON 내보내기",
+            "laser_labels.json 객체 배열 형식입니다. 원본 파일은 수정하지 않습니다.\n"
+            "검토 상태·revision·provenance 등 작업 전용 필드는 담을 수 없으며, "
+            "원본 속도/포인트 수는 재계산하지 않습니다. 작업 JSON을 별도로 보관하세요.\n"
+            "계속할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
         result = _run_task(
             self,
             "라벨 내보내기",
-            lambda: export_dataset_labels(
+            lambda control: export_dataset_labels(
                 dataset,
                 config=config,
                 export_format=export_format,
@@ -581,10 +517,20 @@ class LabelExportDialog(QDialog):
                 frame_ids=frame_ids or None,
                 workspace_root=Path(workspace_text) if workspace_text else None,
                 profile_id=profile_id,
+                export_class_mapping=mapping or None,
+                task=control,
             ),
         )
         if result is None:
             return
+        if result.reports:
+            report_message = QMessageBox(
+                QMessageBox.Icon.Information, "Source 내보내기 보고서",
+                "세부 정보에서 프레임별 변환·누락 필드·경고를 확인하고 복사할 수 있습니다.",
+                parent=self,
+            )
+            report_message.setDetailedText(json.dumps(result.reports, ensure_ascii=False, indent=2))
+            report_message.exec()
         QMessageBox.information(
             self,
             "Export 완료",
@@ -652,7 +598,7 @@ class CalibrationVerificationDialog(QDialog):
         result = _run_task(
             self,
             "Calibration 검증",
-            lambda: verify_calibration(
+            lambda _control: verify_calibration(
                 dataset,
                 calibration,
                 frames=frame_ids,
@@ -714,6 +660,7 @@ class WorkflowDialog(QDialog):
             ("데이터셋 검사", self._preflight, QStyle.StandardPixmap.SP_DialogApplyButton),
             ("라벨 통계", self._statistics, QStyle.StandardPixmap.SP_FileDialogInfoView),
             ("라벨 내보내기", self._export, QStyle.StandardPixmap.SP_DialogSaveButton),
+            ("v1 작업 라벨 → v2 이전", self._migrate_labels, QStyle.StandardPixmap.SP_ArrowForward),
             ("정보", self._about, QStyle.StandardPixmap.SP_MessageBoxInformation),
         )
         for index, (text, handler, icon) in enumerate(actions):
@@ -815,6 +762,17 @@ class WorkflowDialog(QDialog):
             self.selected_dataset = dialog.selected_dataset
             self.accept()
 
+    def _migrate_labels(self) -> None:
+        selected = self._choose_dataset("이전 대상 v2 구성 폴더 선택")
+        if selected is None:
+            return
+        try:
+            dialog = LabelMigrationV2Dialog(selected, self)
+        except (OSError, ValueError, KeyError) as exc:
+            QMessageBox.critical(self, "라벨 이전 입력 확인", str(exc))
+            return
+        dialog.exec()
+
     def _preflight(self) -> None:
         dataset = self._choose_dataset("검사할 데이터셋 선택")
         if dataset is None:
@@ -826,11 +784,12 @@ class WorkflowDialog(QDialog):
         report = _run_task(
             self,
             "데이터셋 검사",
-            lambda: validate_dataset(
+            lambda control: validate_dataset(
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 verify_images=True,
                 profile_id=profile_id,
+                task=control,
             ),
         )
         if report is None:
@@ -866,11 +825,12 @@ class WorkflowDialog(QDialog):
         source = _run_task(
             self,
             "라벨 통계",
-            lambda: collect_label_statistics(
+            lambda control: collect_label_statistics(
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 working=False,
                 profile_id=profile_id,
+                task=control,
             ),
         )
         if source is None:
@@ -878,11 +838,12 @@ class WorkflowDialog(QDialog):
         working = _run_task(
             self,
             "작업 라벨 통계",
-            lambda: collect_label_statistics(
+            lambda control: collect_label_statistics(
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 working=True,
                 profile_id=profile_id,
+                task=control,
             ),
         )
         if working is None:

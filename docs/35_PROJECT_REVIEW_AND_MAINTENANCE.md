@@ -53,6 +53,8 @@ P1/P2는 이번 코드 검토의 수정 우선순위다. 과거 설계 문서의
 
 ## 검증
 
+### 1차 안전성 커밋의 로컬 검증
+
 최종 코드 동결 후의 로컬 실행 결과다. 검증 명령은 [scripts 안내](../scripts/README.md)를 따른다.
 
 - Windows, 기존 공식 Python 3.12.14 가상환경; PySide6/Qt 6.11.1 환경 검사 통과.
@@ -77,16 +79,66 @@ P1/P2는 이번 코드 검토의 수정 우선순위다. 과거 설계 문서의
 - 설치 복구 시 `.venv/pyvenv.cfg`가 없으면 자동 삭제하지 않는다. 기존 폴더를 검토·보존한 뒤
   새 환경을 만든다.
 
-## 다음 정리 순서와 남은 Gate
+## 후속 정리 수행 결과 — v0.4.0
 
-1. **운영 인증:** GitHub 네 matrix job 통과를 확인하고 새 Windows PC에서 한글·공백 경로,
-   OpenGL 표시, 저장·재로드·복구를 검수한다. 네트워크 공유 폴더의 실제 동시 쓰기·lock도 별도 검증한다.
-2. **실제 데이터 QA:** 차량·사람·공중 표지판, 가림/포인트 부족/유사 객체에서 추적 성공과 보수적
-   fallback을 확인한다. 지면 z 옵션은 객체별 기본 OFF이며 크기/yaw는 추적하지 않는다.
-3. **작은 단위 구조 개선:** `MainWindow`의 frame 전환, 편집 명령, 추적 상태, 뷰 갱신 책임을
-   기존 회귀 테스트를 유지하며 단계적으로 분리한다. 검사·통계·export의 공용 busy worker에도
-   취소 token/진행률을 확대한다. 이번에는 대규모 파일 이동/재작성을 하지 않았다.
-4. **보류 기능:** reviewed/skipped 작업 흐름, source-compatible exporter, 전체-frame v1→v2
-   migrator는 별도 구현 범위다. 부분 객체 가져오기나 일반 GUI export와 혼동하지 않는다.
-5. **문서/릴리스:** 실제 인증 결과를 기록한 뒤 역사 문서 archive, 라이선스 묶음·버전/아이콘·서명
-   범위를 결정한다. 링크·외부 사용 여부 확인 없이 레거시 경로를 삭제하지 않는다.
+첫 안전성 변경은 `929d1b2`로 커밋·푸시했다. 첫 GitHub CI에서 Linux의 Windows-only ctypes
+타입 검사와 Windows short TEMP 경로를 비교하는 테스트가 실패했다. 플랫폼 분기와 비교 경로를
+고친 `7cd40d3`는 [네 matrix 모두 통과](https://github.com/min5921/lidar_labeling/actions/runs/34729823529)했다.
+
+| 예정했던 순서 | 이번 후속 작업 |
+|---|---|
+| 운영 인증 | Windows/Ubuntu × Python 3.10/3.12 CI, 로컬 새 한글·공백 경로 가상환경 설치, 실제 Windows/OpenGL interaction smoke |
+| 실제 데이터 QA | read-only 추적 QA service/CLI, 동일 source ID 표본 비교와 원본 hash 비변경 확인 |
+| 구조 개선 | Qt-free `ForwardCarryState`, `PointViewController`, 공용 `TaskControl`/취소 가능 worker 분리 |
+| 보류 사용자 흐름 | 검토 완료/건너뜀·필터·다음 미검토, source JSON exporter·mapping/report, 기존 v2 대상 전체 v1 라벨 migrator |
+| 문서/릴리스 | 현행 사용법 갱신, 이력 4문서 archive+기존 경로 안내, notice 원문 수집기, 버전 0.4.0, 미확정 배포 조건 체크리스트 |
+
+추가 안전성 검수에서는 마지막 프레임의 취소가 성공처럼 반환되는 문제, Windows 3.10 junction
+검사 누락, Win32 PID 검사 HANDLE 폭/접근 거부 판정, 이관 완료 뒤 lock 해제 실패를 전체 이관
+실패로 잘못 표시하는 문제도 회귀 테스트와 함께 고쳤다. 완료한 namespace는 유지하고 lock
+정리 문제만 별도 경고한다.
+
+### 후속 검증 환경
+
+- 로컬 Windows Python 3.12.14, PySide6/Qt 6.11.1. 별도 `artifacts/검증 환경 20260913/venv`를
+  새로 만들고 bootstrap/runtime/development lock 설치, editable 0.4.0 설치 및 Qt DLL 확인 통과.
+  이는 같은 PC의 새 환경이지 다른 Windows PC 인증은 아니다.
+- 새 환경 전체 회귀 480 passed, 2 skipped, 10 subtests 및 `pip check` 통과(최종 경로/lock
+  보강 직전 checkpoint). Windows symlink 권한 skip은 Linux CI에서 별도 실행한다.
+- `scripts/interaction_smoke.py`를 실제 `QT_QPA_PLATFORM=windows`로 실행하여 `interaction smoke: OK`.
+  Waymo `frame_000`에서 편집·Undo/Redo·3D picking·다음 프레임 이어받기 등을 임시 외부 workspace에서
+  확인했다. 원본 작업 라벨을 저장 대상으로 사용하지 않았다. 새 PC/GPU 인증으로 확대 해석하지 않는다.
+
+### 실제 추적 표본
+
+대상: `local_data/incoming/segment-175830748773502782_1580_000_1600_000_with_camera_labels`.
+TOP만 선택, `frame_000~003` 인접 3쌍 × 12개 = 36건. 지면 z 보정 OFF.
+
+| 클래스 | 수락 / 표본 | 수락한 중심의 평균 오차 |
+|---|---|---|
+| Car | 12 / 15 | 0.0544 m |
+| Pedestrian | 5 / 9 | 0.0782 m |
+| Sign | 0 / 12 | 수락 없음 |
+
+전체 수락 17건, 보수적 원위치 유지 19건. 수락 전체 평균 0.0614 m, 최대 0.1240 m.
+표지판은 포인트 부족 10건/모호 2건 모두 fallback이므로 **표지판 추적 성공을 검증한 것이 아니다**.
+사용한 point/source 12파일 SHA 전후 일치, box 크기/yaw 유지와 fallback 원위치 불변 검사 통과.
+다음 frame source box는 tracker 입력이 아니라 평가에만 사용한다. 작은 기존 source 라벨 표본과의
+비교이며, 독립 정답 인증이나 다른 센서·속도·가림 상황에서의 일반 정확도를 보장하지 않는다.
+
+재현은 `scripts/validate_tracking_sample.py <dataset> --lidar-id TOP --max-frames 4
+--max-objects-per-pair 12`를 사용한다. 결과는 stdout JSON으로만 출력한다.
+
+### 외부 확인/명시적 확장이 남은 범위
+
+1. 사용자의 새 Windows PC 및 대상 Linux desktop/GPU에서 최종 동작 인증.
+2. 실제 네트워크 공유의 두 PC 동시 쓰기·lock·연결 단절 시험.
+3. 실제 AEVA/다양한 가림·표지판 표본과 지면 z ON/OFF 정확도 검수.
+4. 기존 v2에 동일 identity를 증명할 수 없는 좌표 변환/재번호, unsafe ID의 새 manifest 자동 생성은
+   현재 migrator가 거부하는 확장 범위다. 지원한 것처럼 자동 치환하지 않는다.
+5. 프로젝트 권리·회사/제작자·아이콘·서명 주체 결정 및 notice 조건 검토.
+   수집기는 29 packages/108 원문/error 0/warning 7을 기록했지만 법적 적합성 판정이 아니다.
+   [릴리스 체크리스트](36_RELEASE_CHECKLIST.md)에 실제 증거와 필요한 결정을 분리했다.
+
+이력 원문 4개만 `docs/archive/`로 이동했고 기존 경로에는 안내를 남겼다. 파일 내용은 보존했고
+Git에서 복원 가능하다. 원본 데이터·작업 라벨·기존 산출물·별도 MCAP 작업은 삭제하지 않았다.

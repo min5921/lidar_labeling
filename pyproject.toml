@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lidar-label-tool"
-version = "0.3.0"
+version = "0.4.0"
 description = "Profile-based single-LiDAR 3D box labeling with optional camera views"
 readme = "README.md"
 requires-python = ">=3.10"

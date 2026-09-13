@@ -21,6 +21,7 @@ from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.frame_session import compare_label_context
 from lidar_label_tool.services.dataset_v2_validation import validate_dataset_v2
+from lidar_label_tool.services.background_task import TaskControl
 
 
 Severity = Literal["info", "warning", "error"]
@@ -210,8 +211,11 @@ def validate_dataset(
     workspace_root: Path | None = None,
     verify_images: bool = True,
     profile_id: str | None = None,
+    task: TaskControl | None = None,
 ) -> PreflightReport:
     """Read-only validation of dataset files, labels, calibration and work state."""
+    task = task or TaskControl()
+    task.report("scan", 0, 0, "데이터셋 구조 확인 중")
     root = Path(dataset_root).resolve()
     if not root.exists():
         return _empty_report(
@@ -241,7 +245,7 @@ def validate_dataset(
 
     issues: list[PreflightIssue] = []
     if isinstance(adapter, DeviceCentricV2Adapter):
-        v2_report = validate_dataset_v2(root, verify_images=False)
+        v2_report = validate_dataset_v2(root, verify_images=False, task=task)
         issues.extend(
             PreflightIssue(
                 issue.severity,
@@ -289,7 +293,8 @@ def validate_dataset(
 
     working_label_count = 0
     working_revisions: list[int] = []
-    for frame_id in index.frame_ids:
+    for ordinal, frame_id in enumerate(index.frame_ids):
+        task.report("preflight", ordinal, index.frame_count, f"데이터셋 검사: {frame_id}")
         try:
             source = adapter.load_source_frame(frame_id)
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
@@ -590,6 +595,7 @@ def validate_dataset(
                         )
                     )
 
+    task.check_cancelled()
     return PreflightReport(
         dataset_root=root,
         dataset_id=index.dataset_id,

@@ -21,7 +21,12 @@ from lidar_label_tool.services.dataset_resync_v2 import (
     resynchronize_dataset_v2,
 )
 from lidar_label_tool.io.dataset_v2 import load_dataset_manifest_v2
-from lidar_label_tool.services.label_export import export_dataset_labels
+from lidar_label_tool.services.label_export import export_dataset_labels, parse_export_class_mapping
+from lidar_label_tool.services.label_migration_v2 import (
+    LabelMigrationRequest, analyze_label_migration_v2, migrate_labels_v2, parse_class_mapping,
+)
+from lidar_label_tool.services.background_task import TaskCancelled
+from lidar_label_tool.services.session_lock import SessionLockExistsError
 from lidar_label_tool.services.label_statistics import LabelStatistics, collect_label_statistics
 
 
@@ -80,6 +85,21 @@ def _parser() -> argparse.ArgumentParser:
         help="separate workspace root used for working labels",
     )
     export_parser.add_argument("--profile")
+    export_parser.add_argument(
+        "--class-map", action="append", default=[],
+        help="explicit current class=source TYPE; repeat as needed",
+    )
+    migration_parser = subparsers.add_parser(
+        "migrate-labels-v2", help="preview v1 working-label migration; --apply to activate",
+    )
+    migration_parser.add_argument("dataset", type=Path, help="existing target v2 config root")
+    migration_parser.add_argument("--source-labels", required=True, type=Path)
+    migration_parser.add_argument("--source-data", required=True, type=Path)
+    migration_parser.add_argument("--profile", required=True)
+    migration_parser.add_argument("--workspace", type=Path)
+    migration_parser.add_argument("--legacy-dataset-id")
+    migration_parser.add_argument("--class-map", action="append", default=[])
+    migration_parser.add_argument("--apply", action="store_true")
     preflight_parser = subparsers.add_parser(
         "preflight", help="validate dataset files and label safety without modifying data"
     )
@@ -175,6 +195,7 @@ def _export(args: argparse.Namespace) -> int:
         frame_ids=args.frames,
         workspace_root=args.workspace,
         profile_id=args.profile,
+        export_class_mapping=parse_export_class_mapping("\n".join(args.class_map)) or None,
     )
     print(
         json.dumps(
@@ -183,11 +204,33 @@ def _export(args: argparse.Namespace) -> int:
                 "dataset_id": result.dataset_id,
                 "frames": result.frame_count,
                 "output": str(result.output),
+                "reports": result.reports,
             },
             ensure_ascii=False,
             indent=2,
         )
     )
+    return 0
+
+
+def _migrate_labels(args: argparse.Namespace) -> int:
+    plan = analyze_label_migration_v2(LabelMigrationRequest(
+        config_root=args.dataset, source_annotation_dir=args.source_labels,
+        source_data_root=args.source_data, profile_id=args.profile,
+        class_mapping=parse_class_mapping("\n".join(args.class_map)),
+        workspace_root=args.workspace, legacy_dataset_id=args.legacy_dataset_id,
+    ))
+    summary: dict[str, object] = {
+        "mode": "apply" if args.apply else "preview",
+        "dataset_id": plan.dataset_id, "profile_id": plan.profile_id,
+        "label_lidar_id": plan.label_lidar_id, "frames": len(plan.frames),
+        "objects": plan.object_count, "target_namespace": str(plan.target_namespace),
+        "already_migrated": plan.already_migrated,
+    }
+    if args.apply:
+        result = migrate_labels_v2(plan, confirmed=True)
+        summary.update(status=result.status, report_path=str(result.report_path), warnings=result.warnings)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -389,6 +432,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.command == "export":
             return _export(args)
+        if args.command == "migrate-labels-v2":
+            return _migrate_labels(args)
         if args.command == "preflight":
             return _preflight(args)
         if args.command == "validate-v2":
@@ -397,7 +442,8 @@ def main(argv: list[str] | None = None) -> int:
             return _resync_v2(args)
         if args.command == "stats":
             return _stats(args)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError, ExportBatchError) as exc:
+    except (OSError, ValueError, KeyError, json.JSONDecodeError, ExportBatchError,
+            TaskCancelled, SessionLockExistsError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 1

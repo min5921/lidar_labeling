@@ -5,6 +5,7 @@ from lidar_label_tool.exporters.centerpoint_intermediate_json import (
 )
 from lidar_label_tool.exporters.lidar_label_json import LidarLabelJsonExporter
 from lidar_label_tool.exporters.registry import ExporterRegistry, create_default_registry
+from lidar_label_tool.exporters.source_laser_json import SourceExportReport, SourceLaserJsonExporter
 
 __all__ = [
     "ExporterRegistry",
@@ -12,6 +13,8 @@ __all__ = [
     "CenterPointIntermediateJsonExporter",
     "LabelExporter",
     "LidarLabelJsonExporter",
+    "SourceExportReport",
+    "SourceLaserJsonExporter",
     "create_default_registry",
     "export_frames",
 ]

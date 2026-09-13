@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 import hashlib
 import json
@@ -246,6 +247,7 @@ class V2LabelRepository:
                     "box_center": coordinate.box_center,
                 },
                 "provenance": {
+                    **deepcopy(dict(label.provenance)),
                     "source_format": "device_centric_v2",
                     "source_paths": [],
                     "source_fingerprints": {},

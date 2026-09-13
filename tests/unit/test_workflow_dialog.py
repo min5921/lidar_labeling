@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from PySide6.QtWidgets import QApplication
 
 from lidar_label_tool.services.dataset_profiles import DatasetProfileChoice
+from lidar_label_tool.services.background_task import TaskControl
 from lidar_label_tool.ui.workflow_dialog import (
     LabelExportDialog,
     OneChipConversionDialog,
@@ -50,7 +51,7 @@ class WorkflowDialogTests(unittest.TestCase):
                 with patch.object(
                     dialog.format_combo, "currentText", side_effect=AssertionError("worker Qt read")
                 ):
-                    return task()
+                    return task(TaskControl())
 
             with (
                 patch(f"{module}._choose_task_profile", return_value=(True, "second")),
@@ -58,7 +59,7 @@ class WorkflowDialogTests(unittest.TestCase):
                 patch(f"{module}._run_task", side_effect=execute_worker),
                 patch(f"{module}.QMessageBox.information"),
                 patch(f"{module}.export_dataset_labels", return_value=SimpleNamespace(
-                    frame_count=1, output=root / "export",
+                    frame_count=1, output=root / "export", reports=(),
                 )) as export,
             ):
                 dialog._export()

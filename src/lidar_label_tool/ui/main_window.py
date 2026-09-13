@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
-from copy import deepcopy
 from dataclasses import replace
 import logging
 import math
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QListView,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -56,7 +56,16 @@ from lidar_label_tool.io.labels.object_source import SavedLabelObjectLoader
 from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
-from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
+from lidar_label_tool.services.frame_review import (
+    REVIEW_STATUS_TEXT,
+    FrameReviewEntry,
+    next_unreviewed_frame,
+    require_re_review,
+    scan_frame_review,
+    set_frame_review_status,
+    visible_review_frame,
+)
+from lidar_label_tool.services.frame_transition import ForwardCarryState
 from lidar_label_tool.services.frame_session import (
     LabelContextIssue,
     compare_calibration_context,
@@ -71,15 +80,15 @@ from lidar_label_tool.services.object_linking import (
     remember_object,
 )
 from lidar_label_tool.services.object_transfer import apply_object_transfer
-from lidar_label_tool.services.object_tracking import (
-    TrackingOptions, TrackingRequest, apply_tracking_result,
-)
+from lidar_label_tool.services.object_tracking import TrackingOptions, TrackingRequest
 from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.services.session_lock_v2 import V2SessionLock
 from lidar_label_tool.ui.panels import CameraPanel, ObjectEditorPanel
 from lidar_label_tool.ui.object_transfer_dialog import ObjectTransferDialog
 from lidar_label_tool.ui.render_cache import PointCloudRenderCache
+from lidar_label_tool.ui.point_view_controller import PointViewController
+from lidar_label_tool.ui.task_dialog import run_task
 from lidar_label_tool.ui.views import (
     BevView,
     CameraImageView,
@@ -169,11 +178,10 @@ class MainWindow(QMainWindow):
         self.uniform_point_color = str(self.config["views"]["uniform_point_color"])
         self._updating_editor = False
         self._closing = False
-        self._pending_carry_target: str | None = None
-        self._pending_carried_objects: tuple[LabeledObject, ...] = ()
-        self._pending_carried_selection: str | None = None
-        self._pending_tracking: TrackingRequest | None = None
-        self._ground_tracking_ids: set[str] = set()
+        self.frame_transition = ForwardCarryState()
+        self._review_entries: dict[str, FrameReviewEntry] = {}
+        self._review_revision = 0
+        self._review_panel_signature: tuple[object, ...] | None = None
         self._detail_reset_requested = False
         self._suppress_auto_focus = False
         self._object_link_reference: ObjectLinkReference | None = None
@@ -207,6 +215,7 @@ class MainWindow(QMainWindow):
         self.image_view = CameraImageView()
         self.detail_view = ObjectDetail3DView()
         self.side_view = SideView(self.render_cache)
+        self.point_views = PointViewController(self.view_3d, self.bev_view, self.side_view)
         self.view_3d.objectSelected.connect(self._select_object_id)
         self.bev_view.objectSelected.connect(self._select_object_id)
         self.bev_view.boxMoved.connect(self._move_box_from_bev)
@@ -286,6 +295,41 @@ class MainWindow(QMainWindow):
         buttons.addWidget(previous)
         buttons.addWidget(following)
         nav_layout.addLayout(buttons)
+        review_buttons = QHBoxLayout()
+        self.mark_reviewed_button = QPushButton("검토 완료")
+        self.mark_skipped_button = QPushButton("건너뜀")
+        self.mark_reviewed_button.clicked.connect(lambda: self._set_frame_review_status("reviewed"))
+        self.mark_skipped_button.clicked.connect(lambda: self._set_frame_review_status("skipped"))
+        review_buttons.addWidget(self.mark_reviewed_button)
+        review_buttons.addWidget(self.mark_skipped_button)
+        nav_layout.addLayout(review_buttons)
+        self.reopen_review_button = QPushButton("재검토: 작업 중으로 변경")
+        self.reopen_review_button.clicked.connect(lambda: self._set_frame_review_status("in_progress"))
+        nav_layout.addWidget(self.reopen_review_button)
+        self.next_unreviewed_button = QPushButton("다음 미검토 프레임 ▶")
+        self.next_unreviewed_button.setToolTip(
+            "현재 profile 순서로 검토 완료·건너뜀을 제외하고 탐색합니다. "
+            "끝에서는 처음으로 돌아가며, 손상 라벨은 오류로 표시하고 숨기지 않습니다. "
+            "프레임을 건너뛰므로 박스 자동 이어받기는 하지 않습니다."
+        )
+        self.next_unreviewed_button.clicked.connect(lambda: self._scan_review_index(navigate=True))
+        nav_layout.addWidget(self.next_unreviewed_button)
+        review_filter_row = QHBoxLayout()
+        self.review_filter_combo = QComboBox()
+        for text, value in (
+            ("전체 프레임", "all"), ("미검토", "unreviewed"), ("작업 중", "in_progress"),
+            ("검토 완료", "reviewed"), ("건너뜀", "skipped"), ("오류", "error"),
+        ):
+            self.review_filter_combo.addItem(text, value)
+        self.review_filter_combo.currentIndexChanged.connect(self._update_review_panel)
+        self.review_refresh_button = QPushButton("상태 갱신")
+        self.review_refresh_button.clicked.connect(lambda: self._scan_review_index())
+        review_filter_row.addWidget(self.review_filter_combo)
+        review_filter_row.addWidget(self.review_refresh_button)
+        nav_layout.addLayout(review_filter_row)
+        self.review_summary_label = QLabel("저장 상태 미확인 · 상태 갱신으로 전체 확인")
+        self.review_summary_label.setWordWrap(True)
+        nav_layout.addWidget(self.review_summary_label)
         self.carry_forward_check = QCheckBox("만든/가져온 박스\n다음 프레임으로 이어가기")
         self.carry_forward_check.setChecked(
             bool(self.config["editing"].get("carry_created_boxes_forward", True))
@@ -683,8 +727,7 @@ class MainWindow(QMainWindow):
             return
         # An unfinished gesture belongs to the displayed frame, not the next
         # frame's object with the same ID. Cancel even if navigation is declined.
-        self.bev_view.cancel_interaction()
-        self.side_view.cancel_interaction()
+        self.point_views.cancel_interactions()
         if (
             self.payload is not None
             and frame_id != self.payload.source.frame_id
@@ -695,7 +738,7 @@ class MainWindow(QMainWindow):
             self.frame_combo.setCurrentText(self.payload.source.frame_id)
             self.frame_combo.blockSignals(False)
             return
-        if self._pending_carry_target is not None and frame_id != self._pending_carry_target:
+        if self.frame_transition.target_frame_id is not None and frame_id != self.frame_transition.target_frame_id:
             self._clear_pending_carry()
         self.request_generation += 1
         request = self.request_generation
@@ -735,40 +778,22 @@ class MainWindow(QMainWindow):
         if not isinstance(payload, FrameLoadPayload):
             return
         self.payload = payload
+        self._review_entries[payload.source.frame_id] = FrameReviewEntry(
+            payload.source.frame_id,
+            "in_progress" if payload.context_issues else payload.label.frame_status,
+            needs_review=bool(payload.context_issues),
+        )
+        self._review_revision += 1
         self._invalidate_camera_projection(payload.context_issues)
         self.history = AnnotationHistory.start(
             payload.label, limit=int(self.config["editing"]["history_limit"])
         )
         recovery_status = self._offer_recovery(payload)
-        carried_ids: tuple[str, ...] = ()
-        carried_selection: str | None = None
-        tracking_message = ""
-        if (
-            recovery_status != "restored"
-            and self.carry_forward_check.isChecked()
-            and payload.source.frame_id == self._pending_carry_target
-            and self._pending_carried_objects
-        ):
-            merged, carried_ids = merge_carried_objects(
-                payload.label, self._pending_carried_objects
-            )
-            self.history.apply(merged)
-            tracking = payload.tracking_result
-            if (
-                tracking is not None and self._pending_tracking is not None
-                and tracking.target_frame_id == payload.source.frame_id
-                and tracking.object_id == self._pending_tracking.obj.id
-                and tracking.source_frame_id == self._pending_tracking.source_frame_id
-            ):
-                tracking_message = tracking.message
-                if tracking.object_id in carried_ids:
-                    # Separate undo step: first Undo restores the unchanged carried box.
-                    self.history.apply(apply_tracking_result(merged, tracking))
-            available_ids = {obj.id for obj in merged.objects}
-            if self._pending_carried_selection in available_ids:
-                carried_selection = self._pending_carried_selection
-            elif carried_ids:
-                carried_selection = carried_ids[0]
+        carry = self.frame_transition.apply(
+            self.history, payload.tracking_result,
+            enabled=self.carry_forward_check.isChecked(), recovered=recovery_status == "restored",
+        )
+        carried_ids, carried_selection, tracking_message = carry.object_ids, carry.selected_id, carry.tracking_message
         self._clear_pending_carry()
         current_label = self.history.current
         self.frame_combo.setEnabled(True)
@@ -1000,6 +1025,8 @@ class MainWindow(QMainWindow):
             self.frame_combo.setCurrentText(self.payload.source.frame_id)
             self.frame_combo.blockSignals(False)
         self._clear_pending_carry()
+        self._review_entries[frame_id] = FrameReviewEntry(frame_id, "error", message)
+        self._review_revision += 1
         self._update_editor()
         self._update_edit_state()
         self.status_message.setText(f"{frame_id} 로드 실패 — {message}")
@@ -1095,26 +1122,11 @@ class MainWindow(QMainWindow):
         label = self._current_label()
         if label is None:
             return
-        objects = label.objects
-        selected_id = self._selected_id()
-        line_width = self.box_line_width_spin.value()
-        self.view_3d.set_boxes(
-            objects,
-            selected_id=selected_id,
-            line_width=line_width,
+        self.point_views.set_boxes(
+            label.objects, self._selected_id(), line_width=self.box_line_width_spin.value(),
             show_labels=self.object_labels_check.isChecked(),
+            bev_visible=self.bev_visible_check.isChecked(), side_visible=self.side_visible_check.isChecked(),
         )
-        if self.bev_visible_check.isChecked():
-            self.bev_view.set_boxes(
-                objects,
-                selected_id=selected_id,
-                line_width=line_width,
-                show_labels=self.object_labels_check.isChecked(),
-            )
-        if self.side_visible_check.isChecked():
-            self.side_view.set_boxes(
-                objects, selected_id=selected_id, line_width=line_width
-            )
         if render_detail:
             self._render_detail()
         self._render_point_selection()
@@ -1122,11 +1134,9 @@ class MainWindow(QMainWindow):
     def _render_point_selection(self) -> None:
         selected = self._selected_object()
         box = selected.box3d if selected is not None and self.highlight_points_check.isChecked() else None
-        self.view_3d.set_selected_box(box)
-        if self.bev_visible_check.isChecked():
-            self.bev_view.set_selected_box(box)
-        if self.side_visible_check.isChecked():
-            self.side_view.set_selected_box(box)
+        self.point_views.set_selected_box(
+            box, bev_visible=self.bev_visible_check.isChecked(), side_visible=self.side_visible_check.isChecked(),
+        )
 
     def _render_detail(self) -> None:
         if self.payload is None:
@@ -1723,7 +1733,9 @@ class MainWindow(QMainWindow):
         )
 
     def _apply_edited_label(self, label: FrameLabel, selected_id: str | None) -> None:
-        if not self.frame_combo.isEnabled() or self.history is None or not self.history.apply(label):
+        if not self.frame_combo.isEnabled() or self.history is None:
+            return
+        if not self.history.apply(require_re_review(self.history.current, label)):
             return
         self._refresh_after_edit(selected_id)
 
@@ -1789,6 +1801,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{'* ' if dirty else ''}{self.base_window_title}")
         self._update_frame_summary()
         self._update_status_badge()
+        self._update_review_panel()
 
     def _update_status_badge(self) -> None:
         if self.payload is None or not hasattr(self, "frame_status_badge"):
@@ -1847,8 +1860,100 @@ class MainWindow(QMainWindow):
         state = "미저장" if dirty else f"revision {label.revision}"
         self.frame_info.setText(
             f"{position}/{self.frame_combo.count()} · {label.frame_id}\n"
-            f"{len(label.objects)}개 객체 · {origin} · {state}"
+            f"{len(label.objects)}개 객체 · {origin} · {state}\n"
+            f"검토 상태: {REVIEW_STATUS_TEXT[label.frame_status]}"
         )
+        self.frame_info.setMinimumHeight(self.frame_info.sizeHint().height())
+
+    def _set_frame_review_status(self, status: str) -> None:
+        if self.history is None or not self.frame_combo.isEnabled():
+            return
+        self._apply_edited_label(set_frame_review_status(self.history.current, status), self._selected_id())
+        self.status_message.setText(
+            f"{REVIEW_STATUS_TEXT[status]}로 표시했습니다. 저장/Ctrl+S로 확정하고 Ctrl+Z로 취소할 수 있습니다."
+        )
+
+    def _scan_review_index(self, *, navigate: bool = False) -> None:
+        if self.history is None or not self.frame_combo.isEnabled():
+            return
+        generation = self.request_generation
+        snapshot = self.history.current
+        # A background reader must never refresh the editor's external-change baseline.
+        reader = open_label_repository(self.adapter, workspace_root=self.workspace_root)
+        result = run_task(
+            self, "프레임 검토 상태 확인",
+            lambda control: scan_frame_review(
+                reader, self.index.frame_ids, control, self.adapter.load_source_frame,
+            ),
+        )
+        if (
+            result is None or self._closing or generation != self.request_generation
+            or self.history is None or self.history.current != snapshot
+        ):
+            return
+        self._review_entries = {entry.frame_id: entry for entry in result.entries}
+        self._review_revision += 1
+        self._update_review_panel()
+        if navigate:
+            target = next_unreviewed_frame(self.index.frame_ids, snapshot.frame_id, self._review_entries)
+            if target is None:
+                self.status_message.setText("다른 프레임은 모두 검토 완료 또는 건너뜀 상태입니다.")
+                return
+            self._clear_pending_carry()
+            self.frame_combo.setCurrentText(target)
+
+    def _update_review_panel(self, *_: Any) -> None:
+        if not hasattr(self, "review_summary_label"):
+            return
+        current = self._current_label()
+        ready = current is not None and self.frame_combo.isEnabled()
+        selected_filter = str(self.review_filter_combo.currentData())
+        signature = (
+            self._review_revision, current.frame_id if current is not None else None,
+            current.frame_status if current is not None else None, selected_filter, ready,
+        )
+        if signature == self._review_panel_signature:
+            return
+        self._review_panel_signature = signature
+        entries = dict(self._review_entries)
+        if current is not None:
+            entry = entries.get(current.frame_id)
+            if entry is None or (entry.status != "error" and not entry.needs_review):
+                entries[current.frame_id] = FrameReviewEntry(current.frame_id, current.frame_status)
+        counts = {status: 0 for status in REVIEW_STATUS_TEXT}
+        view = self.frame_combo.view()
+        for position, frame_id in enumerate(self.index.frame_ids):
+            entry = entries.get(frame_id)
+            counts[entry.status if entry is not None else "unknown"] += 1
+            self.frame_combo.setItemData(
+                position,
+                f"{frame_id} · {REVIEW_STATUS_TEXT[entry.status] if entry else '미확인'}"
+                + (f"\n{entry.error}" if entry and entry.error else ""),
+                Qt.ItemDataRole.ToolTipRole,
+            )
+            if isinstance(view, QListView):
+                # Current frame stays visible, and errors never disappear in a filter.
+                view.setRowHidden(
+                    position, not visible_review_frame(entry, selected_filter)
+                    and not (current is not None and frame_id == current.frame_id),
+                )
+        self.review_summary_label.setText(
+            f"전체 {len(self.index.frame_ids)} · 완료 {counts['reviewed']} · 건너뜀 {counts['skipped']}\n"
+            f"작업 중 {counts['in_progress']} · 미방문 {counts['unvisited']} · 오류 {counts['error']}"
+            + (f" · 미확인 {counts['unknown']}" if counts['unknown'] else "")
+            + ("\n기준 변경: 재검토 필요 " + str(sum(entry.needs_review for entry in entries.values()))
+               if any(entry.needs_review for entry in entries.values()) else "")
+        )
+        self.review_summary_label.setToolTip(
+            "현재 profile의 작업 라벨 상태입니다. 현재 프레임의 미저장 상태도 반영합니다. "
+            "필터는 목록 선택에만 적용되며 이전/다음은 원래 순서를 유지합니다. "
+            "외부 변경은 상태 갱신으로 확인하세요. 오류 프레임은 모든 필터에서 표시합니다."
+        )
+        for widget in (
+            self.mark_reviewed_button, self.mark_skipped_button, self.reopen_review_button,
+            self.next_unreviewed_button, self.review_refresh_button, self.review_filter_combo,
+        ):
+            widget.setEnabled(ready)
 
     def _save_working_label(self, *_: Any) -> bool:
         if self.history is None:
@@ -1902,6 +2007,8 @@ class MainWindow(QMainWindow):
             )
             return False
         self.history.mark_saved(saved)
+        self._review_entries[saved.frame_id] = FrameReviewEntry(saved.frame_id, saved.frame_status)
+        self._review_revision += 1
         if self.payload is not None:
             self.payload = replace(
                 self.payload,
@@ -2016,38 +2123,33 @@ class MainWindow(QMainWindow):
         target = min(max(self.frame_combo.currentIndex() + delta, 0), self.frame_combo.count() - 1)
         if target != self.frame_combo.currentIndex():
             if delta == 1 and self.carry_forward_check.isChecked():
-                self._clear_pending_carry()
                 label = self._current_label()
-                self._pending_carry_target = self.frame_combo.itemText(target)
-                self._pending_carried_objects = (
-                    created_objects(label.objects) if label is not None else ()
-                )
-                self._pending_carried_selection = self._selected_id()
                 selected = self._selected_object()
-                if self.tracking_check.isChecked() and selected is not None and label is not None:
-                    if not any(obj.id == selected.id for obj in self._pending_carried_objects):
-                        self._pending_carried_objects += (selected,)
-                    self._pending_tracking = TrackingRequest(
-                        label.dataset_id, label.frame_id, self._pending_carry_target,
-                        label.reference_frame, tuple(sorted(label.point_cloud_paths)), deepcopy(selected),
-                        tuple(self._active_clouds()),
-                        TrackingOptions(
-                            max_distance_m=self.tracking_distance_spin.value(),
-                            adjust_z=self.tracking_z_check.isChecked(),
-                            ground_contact=selected.id in self._ground_tracking_ids,
-                        ),
+                options = None
+                if self.tracking_check.isChecked() and selected is not None:
+                    options = TrackingOptions(
+                        max_distance_m=self.tracking_distance_spin.value(),
+                        adjust_z=self.tracking_z_check.isChecked(),
+                        ground_contact=selected.id in self._ground_tracking_ids,
                     )
+                self.frame_transition.prepare(
+                    label, self.frame_combo.itemText(target), selected, self._selected_id(),
+                    self._active_clouds(), options,
+                )
             else:
                 self._clear_pending_carry()
             self.frame_combo.setCurrentIndex(target)
 
     def _clear_pending_carry(self) -> None:
-        if self._pending_tracking is not None:
-            self._pending_tracking.cancel.set()
-        self._pending_tracking = None
-        self._pending_carry_target = None
-        self._pending_carried_objects = ()
-        self._pending_carried_selection = None
+        self.frame_transition.clear()
+
+    @property
+    def _pending_tracking(self) -> TrackingRequest | None:
+        return self.frame_transition.tracking
+
+    @property
+    def _ground_tracking_ids(self) -> set[str]:
+        return self.frame_transition.ground_object_ids
 
     def closeEvent(self, event: Any) -> None:
         if not self._closing and not self._resolve_dirty_before_leave(confirm_close=True):

@@ -149,6 +149,19 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 ## 다음 구현
 
 1. 공식 Python 3.12가 설치된 clean Windows PC에서 한글/공백 경로 setup/open/edit/save 최종 인증
-2. third-party license 묶음, 앱 아이콘, 버전 정보, 코드 서명
-3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
-4. source-compatible exporter와 명시적 전체-frame v1→v2 migrator (GUI 일반 export는 구현됨)
+2. 실제 다중 PC 공유 폴더 lock 인증과 더 넓은 실제 센서/표지판 추적 QA
+3. 수집된 third-party notice의 적용 조건 검토, 프로젝트 라이선스·앱 아이콘·서명 주체 결정
+4. 좌표 변환/재번호 및 unsafe legacy ID의 새 manifest 자동 생성을 포함하는 별도 migration 확장
+
+## v0.4.0 후속 정리 완료
+
+- 명시 reviewed/skipped/in_progress, 상태 필터·집계, 취소 가능한 다음 미검토 검색
+- Qt-free frame transition/추적 이어받기 상태와 point view 갱신 controller 분리
+- 공용 취소·진행률 worker 및 검사/통계/export 서비스 연결
+- `source_laser_json` exporter, 명시 class mapping, 누락 metadata 보고서
+- 기존 v2 대상의 전체 v1 작업 라벨 migration: preview/확인, 모든 파일 검증, no-replace namespace 활성화
+- Windows PID lock의 64-bit HANDLE 및 접근 거부 판정 보강
+- 실제 표본 추적 검증 도구와 third-party license 원문·hash 수집 도구
+- 현재 버전 0.4.0 동기화, 과거 검수 문서 4개 archive 및 기존 경로 안내 유지
+
+최종 테스트·CI와 운영상 남은 Gate는 [유지보수 보고서](35_PROJECT_REVIEW_AND_MAINTENANCE.md)를 따른다.

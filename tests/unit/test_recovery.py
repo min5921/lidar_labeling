@@ -9,6 +9,7 @@ import unittest
 from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.io.labels.json_repository import LabelRepository
 from lidar_label_tool.services.annotation_history import AnnotationHistory
+from lidar_label_tool.services.frame_review import FrameReviewEntry
 from lidar_label_tool.services.recovery import RecoveryStore
 from lidar_label_tool.ui.main_window import MainWindow
 
@@ -43,6 +44,8 @@ class _SaveHarness:
         self.recovery_store = recovery_store
         self.status_message = _StatusMessage()
         self.edit_state_updated = False
+        self._review_entries: dict[str, FrameReviewEntry] = {}
+        self._review_revision = 0
 
     def _update_edit_state(self) -> None:
         self.edit_state_updated = True

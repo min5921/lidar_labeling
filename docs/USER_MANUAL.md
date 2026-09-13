@@ -615,7 +615,64 @@ Export는 기존 파일을 덮어쓰지 않으며, working/source label이나 ge
 ## 18. 아직 지원하지 않는 기능
 
 - 원본 멀티 LiDAR 자동 calibration 추정
-- frame reviewed/skipped workflow
-- source-compatible 별도 export
-- 전체-frame v1→v2 자동 migration (계약만 정의됨; 객체 가져오기와 다름)
+- LiDAR/reference frame 변환·frame 재번호가 필요한 전체-frame migration
+- v1의 안전하지 않은 dataset ID를 새 manifest와 함께 자동 치환하는 migration
 - Python 미설치 PC용 단일 실행 파일 배포
+
+## 검토 상태와 다음 미검토 이동
+
+Frame 패널의 `검토 완료`, `건너뜀`, `작업 중` 버튼은 현재 프레임의 상태를 명시적으로 바꾼다.
+박스가 존재하거나 자동 추적에 성공했다는 이유로 검토 완료가 되지는 않는다. 완료·건너뜀 뒤
+객체를 편집하면 다시 작업 중이 된다. 상태 변경도 Undo/Redo가 가능하며 일반 저장을 해야
+디스크에 확정된다.
+
+`검토 상태 새로고침`으로 활성 profile 전체의 상태를 읽고 필터로 미검토/작업 중/완료/건너뜀을
+좁힌다. 손상된 라벨은 오류로 표시하며 완료로 간주하지 않는다. `다음 미검토 프레임 ▶`은
+현재 순서에서 다음 미검토를 찾고 끝에서 한 번 순환한다. reviewed/skipped는 제외하고,
+외부에서 기준 파일이 달라진 프레임은 재검토 대상으로 잡는다. 현재 편집의 저장/취소 절차를
+거치며, 중간 프레임을 건너뛰는 이 이동에는 객체 복사·자동 추적을 적용하지 않는다.
+
+## Source JSON 내보내기
+
+첫 화면 `라벨 내보내기`에서 `source_laser_json`을 선택하면 기존 Waymo/device-centric
+`laser_labels.json`과 같은 객체 배열을 새 경로에 쓴다. Waymo protobuf나 공식 학습 데이터 전체를
+생성하는 기능은 아니다. 다른 export와 마찬가지로 원본/working 파일은 수정하지 않는다.
+
+Source 클래스 매핑은 `현재 class = TYPE`을 한 줄씩 입력한다. v2에서는 display name이 아니라
+taxonomy의 stable class ID를 사용한다. 예: `car = TYPE_VEHICLE`. 명시 매핑이 없으면 v1 설정 또는
+v2 taxonomy의 `source_mappings.waymo`를 사용하지만, 역매핑이 불명확하면 추측하지 않고 중단한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool export <dataset> --profile <profile_id> --format source_laser_json --output <new-folder> --class-map car=TYPE_VEHICLE
+```
+
+현재 object ID·class·box가 반영되며 보존한 source의 알 수 없는 필드는 유지한다. 원본 속도/
+포인트 수는 재계산하지 않는다. frame 검토 상태·revision·provenance 등 source 배열에 담지 못하는
+정보는 완료 창의 세부 보고서와 CLI JSON `reports`로 안내한다. 작업 JSON도 별도로 보관한다.
+배치 취소/오류는 이미 완성한 출력 파일을 보존하므로 재시도에는 새 출력 폴더를 선택한다.
+
+## 전체 v1 작업 라벨을 v2로 이전
+
+첫 화면 `v1 작업 라벨 → v2 이전`을 누르고 **이미 구성된 대상 v2 폴더**를 선택한다. v1 작업
+라벨 JSON 폴더, v1 원본 데이터 루트, 대상 profile, 명시 class mapping(`Car = car`)을 지정한다.
+분석은 파일을 쓰지 않는다. 전체 frame 수·객체 수·대상 namespace를 확인한 뒤 이전을 실행한다.
+
+CLI도 기본은 미리보기다. 실제 실행은 같은 명령에 `--apply`를 추가한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m lidar_label_tool migrate-labels-v2 <v2-config> --source-labels <v1-label-folder> --source-data <v1-data-root> --profile <profile_id> --class-map Car=car
+```
+
+- 안전한 dataset ID, 단일 LiDAR ID, reference frame, frame ID, point 상대 경로와 실제 바이트가
+  일치해야 한다. 좌표 변환이나 frame 재번호를 자동 추측하지 않는다.
+- 원본 JSON·`.bak`·v1 recovery는 보존한다. source/unknown metadata와 객체 ID를 유지하고
+  v2 revision은 v1 revision+1로 기록한다. 카메라/보정 context는 대상 profile 기준으로 재검토한다.
+- 기존 대상 namespace는 빈 폴더라도 합치거나 덮어쓰지 않는다. 대상 profile을 이미 열어서
+  폴더가 생겼다면 새 profile 또는 새 외부 workspace를 선택한다.
+- 전체 frame과 `.migration-report.json`을 임시 namespace에서 검증한 뒤 한 번에 활성화한다.
+  동일 입력·완료 report·출력 hash가 그대로면 `already_migrated`로 쓰지 않고 끝낸다.
+- 안전하지 않은 legacy dataset ID는 manifest에 동일 `metadata.legacy_dataset_id`가 이미 명시된
+  경우에만 명시적 연결을 허용한다. 새 ID/manifest의 자동 생성은 아직 제공하지 않는다.
+
+검사·통계·이전은 작업 창에서 취소할 수 있다. 취소는 현재 파일의 안전한 처리 경계에서 적용되며,
+이미 끝난 원자적 활성화를 취소된 것처럼 표시하지 않는다.

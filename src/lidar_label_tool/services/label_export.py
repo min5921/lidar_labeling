@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from lidar_label_tool.exporters import create_default_registry, export_frames
+from lidar_label_tool.exporters.source_laser_json import SourceLaserJsonExporter
 from lidar_label_tool.io.adapters.device_centric import DeviceCentricAdapter
 from lidar_label_tool.io.adapters.device_centric_v2 import DeviceCentricV2Adapter
 from lidar_label_tool.io.adapters.factory import open_dataset_adapter
@@ -14,6 +15,7 @@ from lidar_label_tool.io.adapters.frame_centric_waymo import WaymoFrameCentricAd
 from lidar_label_tool.io.labels.repository_factory import open_label_repository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.frame_session import FrameSessionService
+from lidar_label_tool.services.background_task import TaskControl
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +25,21 @@ class LabelExportResult:
     frame_count: int
     output: Path
     exported_paths: tuple[Path, ...]
+    reports: tuple[dict[str, Any], ...] = ()
+
+
+def parse_export_class_mapping(text: str) -> dict[str, str]:
+    """Parse explicit ``current class = source TYPE`` lines outside the UI."""
+    result: dict[str, str] = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        key, separator, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or not key or not value or key in result:
+            raise ValueError(f"{number}행: 중복 없이 class = TYPE 형식으로 입력하세요.")
+        result[key] = value
+    return result
 
 
 def _input_pattern_contains(target: Path, data_root: Path, pattern: str) -> bool:
@@ -78,8 +95,12 @@ def export_dataset_labels(
     frame_ids: Sequence[str] | None = None,
     workspace_root: Path | None = None,
     profile_id: str | None = None,
+    export_class_mapping: Mapping[str, str] | None = None,
+    task: TaskControl | None = None,
 ) -> LabelExportResult:
     """Explicitly export labels without changing source or working labels."""
+    task = task or TaskControl()
+    task.report("scan", 0, 0, "내보내기 대상 확인 중")
     root = Path(dataset_root).resolve()
     adapter = open_dataset_adapter(root, profile_id=profile_id)
     index = adapter.scan()
@@ -101,14 +122,31 @@ def export_dataset_labels(
     unknown = sorted(set(selected) - set(index.frame_ids))
     if unknown:
         raise ValueError(f"unknown frame id(s): {', '.join(unknown)}")
-    opened_frames = tuple(session.open_frame(frame_id) for frame_id in selected)
+    opened_frames = []
+    for ordinal, frame_id in enumerate(selected):
+        task.report("export_read", ordinal, len(selected), f"작업 라벨 읽기: {frame_id}")
+        opened_frames.append(session.open_frame(frame_id))
     labels = tuple(frame.label for frame in opened_frames)
     allowed_classes = (
         tuple(item.id for item in adapter.taxonomy.classes)
         if isinstance(adapter, DeviceCentricV2Adapter)
         else tuple(str(item["name"]) for item in config["classes"])
     )
-    exporter = create_default_registry(allowed_classes).get(export_format)
+    source_mapping = (
+        adapter.taxonomy.source_mappings.get("waymo", {})
+        if isinstance(adapter, DeviceCentricV2Adapter)
+        else config["source_class_mappings"]
+    )
+    exporter = create_default_registry(
+        allowed_classes, source_class_mapping=source_mapping,
+        export_class_mapping=export_class_mapping,
+    ).get(export_format)
+    reports: list[dict[str, Any]] = []
+    for ordinal, label in enumerate(labels):
+        task.report("export_validate", ordinal, len(labels), f"내보내기 검증: {label.frame_id}")
+        exporter.validate(label)
+        if isinstance(exporter, SourceLaserJsonExporter):
+            reports.append(exporter.describe(label).to_dict())
     requested_output = Path(output)
     if requested_output.is_symlink() and not requested_output.is_dir():
         raise FileExistsError(f"export output is an existing symbolic link: {requested_output}")
@@ -182,6 +220,7 @@ def export_dataset_labels(
         )
     exported: tuple[Path, ...]
     if single_file:
+        task.check_cancelled()
         exporter.export_frame(labels[0], target)
         exported = (target,)
     else:
@@ -189,11 +228,12 @@ def export_dataset_labels(
             raise ValueError("multiple-frame output must be a directory, not a JSON path")
         if target.exists() and not target.is_dir():
             raise ValueError("multiple-frame output must be a directory")
-        exported = export_frames(labels, exporter, target)
+        exported = export_frames(labels, exporter, target, task=task)
     return LabelExportResult(
         export_format=exporter.name,
         dataset_id=index.dataset_id,
         frame_count=len(exported),
         output=target,
         exported_paths=exported,
+        reports=tuple(reports),
     )

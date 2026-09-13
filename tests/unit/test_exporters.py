@@ -111,7 +111,7 @@ class ExporterTests(unittest.TestCase):
         self.assertIsInstance(exporter, LidarLabelJsonExporter)
         self.assertEqual(
             registry.names,
-            ("centerpoint_intermediate_json", "lidar_label_json"),
+            ("centerpoint_intermediate_json", "lidar_label_json", "source_laser_json"),
         )
 
     def test_registry_rejects_duplicate_name(self) -> None:

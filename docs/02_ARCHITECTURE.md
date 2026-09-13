@@ -94,8 +94,11 @@ adapter가 담당한다. 모든 I/O가 point loader 안에 있는 것은 아니�
 
 v2 구성·동기화·저장은 UI가 JSON을 직접 쓰지 않고 service 계층의 transaction을 통해 수행한다.
 생성 transaction과 runtime adapter까지 구현되어 있다. 기존 v1 adapter와 one_chip 변환기는
-호환 계층으로 유지한다. 계약에 정의된 전체-frame v1→v2 migrator는 아직 구현된 것으로
-간주하지 않는다.
+호환 계층으로 유지한다. `label_migration_v2`는 기존 v2 대상에 대한 명시적 전체-frame 이전을
+담당하며, source/target identity와 파일 hash를 검사한 뒤 새 namespace만 활성화한다.
+`frame_review`는 Qt 없는 검토 상태/탐색, `frame_transition`은 다음 frame carry/추적 준비,
+`point_view_controller`는 main thread의 여러 point view 갱신을 담당한다.
+장시간 검사/통계/export는 `background_task.TaskControl`과 `ui.task_dialog`를 공유한다.
 
 ### `workers/`
 

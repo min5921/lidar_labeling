@@ -104,15 +104,33 @@ def _pid_is_running(pid: int) -> bool:
         return True
     if sys.platform == "win32":
         import ctypes
+        from ctypes import wintypes
 
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        open_process.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [wintypes.HANDLE]
+        close_handle.restype = wintypes.BOOL
+        get_exit_code = kernel32.GetExitCodeProcess
+        get_exit_code.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        get_exit_code.restype = wintypes.BOOL
         process_query_limited_information = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(
-            process_query_limited_information, False, pid
-        )
+        ctypes.set_last_error(0)
+        handle = open_process(process_query_limited_information, False, pid)
         if not handle:
-            return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+            # Access denied (elevated/protected process) and unknown failures do
+            # not prove that an owner's process is dead. Never suggest stealing
+            # its lock. ERROR_INVALID_PARAMETER is the absent-PID case here.
+            return ctypes.get_last_error() != 87
+        try:
+            exit_code = wintypes.DWORD()
+            if not get_exit_code(handle, ctypes.byref(exit_code)):
+                return True
+            return exit_code.value == 259  # STILL_ACTIVE
+        finally:
+            close_handle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

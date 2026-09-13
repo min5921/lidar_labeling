@@ -17,6 +17,42 @@ from tests.fixture_builders import (
 
 
 class CliTests(unittest.TestCase):
+    def test_migration_preview_is_default_and_mapping_is_explicit(self) -> None:
+        from tests.unit.test_label_migration_v2 import _fixture
+
+        with TemporaryDirectory() as directory:
+            request = _fixture(Path(directory))
+            argv = [
+                "migrate-labels-v2", str(request.config_root),
+                "--source-labels", str(request.source_annotation_dir),
+                "--source-data", str(request.source_data_root),
+                "--profile", request.profile_id, "--class-map", "Car=car",
+            ]
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(main(argv), 0)
+            preview = json.loads(output.getvalue())
+            self.assertEqual(preview["mode"], "preview")
+            self.assertFalse(Path(preview["target_namespace"]).exists())
+            with redirect_stdout(StringIO()):
+                self.assertEqual(main([*argv, "--apply"]), 0)
+            self.assertTrue(Path(preview["target_namespace"]).is_dir())
+
+    def test_source_export_outputs_conversion_report(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_device_dataset(root)
+            write_source_labels(root, "000000", [source_object("car-1")])
+            output = StringIO()
+            with redirect_stdout(output):
+                result = main([
+                    "export", str(root), "--format", "source_laser_json",
+                    "--frame", "000000", "--output", str(root / "exported"),
+                    "--class-map", "Car=TYPE_VEHICLE",
+                ])
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.getvalue())["reports"][0]["frame_id"], "000000")
+
     def test_gui_dataset_is_optional_for_folder_picker(self) -> None:
         args = _parser().parse_args(["gui"])
         self.assertEqual(args.command, "gui")

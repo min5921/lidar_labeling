@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 
 from lidar_label_tool.exporters.base import LabelExporter
 from lidar_label_tool.exporters.centerpoint_intermediate_json import (
     CenterPointIntermediateJsonExporter,
 )
 from lidar_label_tool.exporters.lidar_label_json import LidarLabelJsonExporter
+from lidar_label_tool.exporters.source_laser_json import SourceLaserJsonExporter
 
 
 class ExporterRegistry:
@@ -35,8 +36,16 @@ class ExporterRegistry:
 
 def create_default_registry(
     allowed_classes: Collection[str] | None = None,
+    *,
+    source_class_mapping: Mapping[str, str] | None = None,
+    export_class_mapping: Mapping[str, str] | None = None,
 ) -> ExporterRegistry:
     registry = ExporterRegistry()
     registry.register(LidarLabelJsonExporter(allowed_classes))
     registry.register(CenterPointIntermediateJsonExporter(allowed_classes))
+    registry.register(SourceLaserJsonExporter(
+        allowed_classes,
+        source_class_mapping=source_class_mapping,
+        export_class_mapping=export_class_mapping,
+    ))
     return registry

@@ -11,6 +11,12 @@ projection을 함께 확인하는 라벨링 도구입니다.
 > Python이 포함된 EXE 설치본은 아직 제공하지 않으며, 각 PC에 공식 Python을 설치한 뒤
 > 프로젝트의 고정 가상환경으로 실행합니다.
 
+v0.4.0에서는 프레임 **검토 완료/건너뜀/다음 미검토 이동**, source `laser_labels.json` 호환
+내보내기, 명시적 v1 작업 라벨→v2 이전을 추가했습니다. 검사·통계·내보내기의 진행률과 취소도
+지원합니다. 자세한 사용 조건은 [사용자 매뉴얼](docs/USER_MANUAL.md#검토-상태와-다음-미검토-이동),
+검증 범위는 [유지보수 기록](docs/35_PROJECT_REVIEW_AND_MAINTENANCE.md), 배포 전 남은 확인은
+[릴리스 체크리스트](docs/36_RELEASE_CHECKLIST.md)를 확인하세요.
+
 ## 핵심 동작 원칙
 
 - 데이터셋에 여러 LiDAR 후보를 등록할 수 있지만, 한 라벨링 profile에서는 LiDAR 하나만
