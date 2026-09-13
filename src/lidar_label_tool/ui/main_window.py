@@ -334,14 +334,27 @@ class MainWindow(QMainWindow):
         self.carry_forward_check.setChecked(
             bool(self.config["editing"].get("carry_created_boxes_forward", True))
         )
+        self.carry_forward_check.setToolTip(
+            "자동 추적 OFF: 만든/가져온 박스 전체를 이어갑니다. "
+            "자동 추적 ON: 선택 객체 하나만 이어가며 다른 객체는 새로 복사하지 않습니다."
+        )
         nav_layout.addWidget(self.carry_forward_check)
         self.tracking_check = QCheckBox("선택 객체 다음 프레임\n자동 추적 (시험 기능)")
         self.tracking_check.setChecked(bool(self.config["editing"].get("track_selected_forward", False)))
         self.tracking_check.setToolTip(
-            "바로 다음 프레임으로 이동할 때 선택 객체만 추적합니다. 기존 라벨·불확실한 후보는 이동하지 않습니다. "
+            "바로 다음 프레임으로 이동할 때 선택 객체만 이어받아 추적합니다. 다른 객체는 새로 복사하지 않습니다. "
+            "기존 라벨은 별도 재추적 옵션을 켜지 않으면 유지하고, 불확실한 후보도 이동하지 않습니다. "
             "Ctrl+Z 한 번으로 자동 이동을 취소할 수 있습니다."
         )
         nav_layout.addWidget(self.tracking_check)
+        self.retrack_existing_check = QCheckBox("선택 객체: 기존 박스도 다시 추적")
+        self.retrack_existing_check.setToolTip(
+            "현재 실행에서 선택한 객체 ID에만 적용합니다. 다음 프레임에 같은 ID가 있어도 위치를 다시 계산합니다. "
+            "미완료 프레임에서 수동으로 조정한 위치도 바뀔 수 있습니다. "
+            "대상의 크기·yaw·속성과 다른 객체는 유지합니다. 검토 완료/건너뜀 프레임의 기존 박스, "
+            "복구한 라벨, 불확실한 추적 결과는 변경하지 않습니다. Ctrl+Z로 되돌릴 수 있습니다."
+        )
+        nav_layout.addWidget(self.retrack_existing_check)
         self.tracking_z_check = QCheckBox("추적 시 상하 위치(z)도 조정\n· 크기 유지")
         self.tracking_z_check.setChecked(bool(self.config["editing"].get("tracking_adjust_z", True)))
         nav_layout.addWidget(self.tracking_z_check)
@@ -363,6 +376,7 @@ class MainWindow(QMainWindow):
         self.tracking_z_check.toggled.connect(self._update_tracking_controls)
         self.carry_forward_check.toggled.connect(self._update_tracking_controls)
         self.ground_tracking_check.toggled.connect(self._set_ground_tracking)
+        self.retrack_existing_check.toggled.connect(self._set_retrack_existing)
         self.import_objects_button = QPushButton("이전 폴더의 객체 가져오기…")
         self.import_objects_button.setToolTip(
             "다음 폴더의 첫 프레임에서 이전 폴더의 마지막 작업 라벨 JSON을 선택하세요. "
@@ -1621,6 +1635,10 @@ class MainWindow(QMainWindow):
         self.ground_tracking_check.setChecked(selected_id in self._ground_tracking_ids)
         self.ground_tracking_check.blockSignals(False)
         self.ground_tracking_check.setEnabled(tracking and self.tracking_z_check.isChecked() and selected_id is not None)
+        self.retrack_existing_check.blockSignals(True)
+        self.retrack_existing_check.setChecked(selected_id in self._retrack_existing_ids)
+        self.retrack_existing_check.blockSignals(False)
+        self.retrack_existing_check.setEnabled(tracking and selected_id is not None)
 
     def _set_ground_tracking(self, enabled: bool) -> None:
         selected_id = self._selected_id()
@@ -1630,6 +1648,15 @@ class MainWindow(QMainWindow):
             self._ground_tracking_ids.add(selected_id)
         else:
             self._ground_tracking_ids.discard(selected_id)
+
+    def _set_retrack_existing(self, enabled: bool) -> None:
+        selected_id = self._selected_id()
+        if selected_id is None or not self.frame_combo.isEnabled():
+            return
+        if enabled:
+            self._retrack_existing_ids.add(selected_id)
+        else:
+            self._retrack_existing_ids.discard(selected_id)
 
     def _remember_selected_object(self) -> None:
         label = self._current_label()
@@ -2134,11 +2161,12 @@ class MainWindow(QMainWindow):
                 label = self._current_label()
                 selected = self._selected_object()
                 options = None
-                if self.tracking_check.isChecked() and selected is not None:
+                if self.tracking_check.isChecked():
                     options = TrackingOptions(
                         max_distance_m=self.tracking_distance_spin.value(),
                         adjust_z=self.tracking_z_check.isChecked(),
-                        ground_contact=selected.id in self._ground_tracking_ids,
+                        ground_contact=selected is not None and selected.id in self._ground_tracking_ids,
+                        retrack_existing=selected is not None and selected.id in self._retrack_existing_ids,
                     )
                 self.frame_transition.prepare(
                     label, self.frame_combo.itemText(target), selected, self._selected_id(),
@@ -2158,6 +2186,10 @@ class MainWindow(QMainWindow):
     @property
     def _ground_tracking_ids(self) -> set[str]:
         return self.frame_transition.ground_object_ids
+
+    @property
+    def _retrack_existing_ids(self) -> set[str]:
+        return self.frame_transition.retrack_existing_ids
 
     def closeEvent(self, event: Any) -> None:
         if not self._closing and not self._resolve_dirty_before_leave(confirm_close=True):

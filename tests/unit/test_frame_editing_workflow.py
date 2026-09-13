@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 from lidar_label_tool.app.config import default_config_path
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
+from lidar_label_tool.services.object_tracking import TrackingResult
 from lidar_label_tool.ui.main_window import MainWindow
 from lidar_label_tool.ui.object_transfer_dialog import ObjectTransferDialog
 from lidar_label_tool.workers.frame_loader import load_frame_payload
@@ -257,7 +258,8 @@ def _previous_folder_label(window, tmp_path):
     )
     previous = replace(
         window.history.current, dataset_id="previous_chunk", frame_id="000999",
-        revision=1, objects=objects, point_cloud_paths={"aeva": ("previous/000999.bin",)},
+        revision=1, objects=objects, frame_status="reviewed",
+        point_cloud_paths={"aeva": ("previous/000999.bin",)},
     )
     path = tmp_path / "이전 폴더 000999.json"
     path.write_text(json.dumps(previous.to_dict()), encoding="utf-8")
@@ -286,6 +288,71 @@ def test_import_button_carries_multiple_objects_across_folder_boundary(window, t
     assert window.payload.source.frame_id == "000001"
     assert [obj.id for obj in window.history.current.objects] == ["track-0", "track-1"]
     assert path.read_bytes() == original_bytes
+
+
+def test_imported_objects_can_be_followed_one_at_a_time_without_prefilling_others(window, tmp_path):
+    path = _previous_folder_label(window, tmp_path)
+    source_bytes = path.read_bytes()
+    with (
+        patch("lidar_label_tool.ui.main_window.QFileDialog.getOpenFileName", return_value=(str(path), "")),
+        patch.object(ObjectTransferDialog, "exec", return_value=QDialog.DialogCode.Accepted),
+    ):
+        window.import_objects_button.click()
+    imported = window.history.current.objects
+    window.tracking_check.setChecked(True)
+
+    def matched(request, target, clouds):
+        # An unselected box must not already exist when its own pass begins.
+        assert request.obj.id not in {obj.id for obj in target.objects}
+        return TrackingResult(
+            request.obj.id, request.source_frame_id, target.frame_id,
+            replace(request.obj.box3d, x=request.obj.box3d.x + 1), "matched", "추적됨", score=.9,
+        )
+
+    with patch("lidar_label_tool.workers.frame_loader.track_object", side_effect=matched):
+        window._select_object_id("track-0")
+        window._move_frame(1)
+        first_pass = window._selected_object()
+        assert [obj.id for obj in window.history.current.objects] == ["track-0"]
+        window._move_frame(1)
+        assert [obj.id for obj in window.history.current.objects] == ["track-0"]
+        assert [obj.id for obj in window.repository.load("000001").objects] == ["track-0"]
+
+        window.frame_combo.setCurrentText("000000")
+        assert window.history.current.objects == imported
+        window._select_object_id("track-1")
+        window._move_frame(1)
+        assert window.payload.tracking_result.status == "matched"
+        assert window.history.current.objects[0] == first_pass
+        assert window._selected_object().box3d.x == imported[1].box3d.x + 1
+        window._undo()
+        assert window._selected_object() == imported[1]
+        assert window.history.current.objects[0] == first_pass
+        window._undo()
+        assert window.history.current.objects == (first_pass,)
+        window._redo()
+        window._redo()
+        window._select_object_id("track-1")
+        window._move_frame(1)
+        assert window.payload.tracking_result.status == "matched"
+        assert window._selected_object().box3d.x == imported[1].box3d.x + 2
+    assert window._save_working_label()
+    assert [obj.id for obj in window.repository.load("000002").objects] == ["track-0", "track-1"]
+    assert path.read_bytes() == source_bytes
+
+
+def test_tracking_enabled_with_no_selection_does_not_copy_imported_objects(window, tmp_path):
+    path = _previous_folder_label(window, tmp_path)
+    with (
+        patch("lidar_label_tool.ui.main_window.QFileDialog.getOpenFileName", return_value=(str(path), "")),
+        patch.object(ObjectTransferDialog, "exec", return_value=QDialog.DialogCode.Accepted),
+    ):
+        window.import_objects_button.click()
+    window.tracking_check.setChecked(True)
+    window._select_object_id(None)
+    window._move_frame(1)
+    assert window.history.current.objects == ()
+    assert window.payload.tracking_result is None
 
 
 @pytest.mark.parametrize("mode", ["cancel", "source_changed", "frame_changed"])
@@ -347,6 +414,120 @@ def test_next_frame_tracking_is_undoable_and_preserves_suspended_object(window):
     saved = window.repository.load("000001")
     assert saved.objects[0].box3d == tracked.box3d
     assert saved.objects[0].extra_fields["tracking_history"][-1]["ground_contact"] is False
+
+
+def _existing_tracking_target(window, obj, status="in_progress"):
+    existing = replace(
+        obj, box3d=replace(obj.box3d, x=25, length=2.2, height=1.2, yaw=.1),
+        attributes={"target-note": "keep"}, source={"raw": {"target": [1]}},
+        extra_fields={"unknown_target": True},
+    )
+    other = replace(existing, id="already-labeled-other", box3d=replace(existing.box3d, x=40))
+    target = window.importer.import_laser_labels(window.adapter.load_source_frame("000001"))
+    target = window.repository.save(replace(target, objects=(existing, other), frame_status=status))
+    return target
+
+
+def test_retracking_existing_box_is_opt_in_undoable_and_preserves_other_saved_objects(window):
+    obj, cloud = _tracking_scene(window)
+    target = _existing_tracking_target(window, obj)
+    window.tracking_check.setChecked(True)
+    assert not window.retrack_existing_check.isChecked()
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -.5, .18])):
+        window._move_frame(1)
+    assert window.payload.tracking_result.status == "existing_label"
+    assert window.history.current.objects == target.objects
+    assert not window.history.dirty
+
+    window._move_frame(-1)
+    window.payload = replace(window.payload, clouds={"aeva": (cloud,)})
+    window._select_object_id(obj.id)
+    window.retrack_existing_check.setChecked(True)
+    source_bytes = window.repository.path_for("000000").read_bytes()
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -.5, .18])):
+        window._move_frame(1)
+    assert window.payload.tracking_result.status == "matched"
+    tracked = window._selected_object()
+    assert tracked.id == obj.id
+    assert tracked.box3d.x == pytest.approx(obj.box3d.x + 1.1, abs=.15)
+    assert tracked.box3d.z == pytest.approx(obj.box3d.z + .18, abs=.15)
+    assert replace(tracked.box3d, x=25, y=obj.box3d.y, z=obj.box3d.z) == target.objects[0].box3d
+    assert tracked.attributes == target.objects[0].attributes
+    assert tracked.source == target.objects[0].source
+    assert tracked.extra_fields["unknown_target"] is True
+    assert window.history.current.objects[1] == target.objects[1]
+    window._undo()
+    assert window.history.current.objects == target.objects
+    assert not window.history.dirty
+    window._redo()
+    assert window._selected_object() == tracked
+    assert window._save_working_label()
+    window._request_frame("000001")
+    assert window.history.current.objects == (tracked, target.objects[1])
+    assert window.repository.load("000001").objects == (tracked, target.objects[1])
+    assert window.repository.path_for("000000").read_bytes() == source_bytes
+
+
+@pytest.mark.parametrize("status", ["reviewed", "skipped"])
+def test_retracking_option_does_not_change_completed_existing_frame(window, status):
+    obj, cloud = _tracking_scene(window)
+    target = _existing_tracking_target(window, obj, status)
+    before = window.repository.path_for("000001").read_bytes()
+    window.tracking_check.setChecked(True)
+    window.retrack_existing_check.setChecked(True)
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -.5, .18])):
+        window._move_frame(1)
+    assert window.payload.tracking_result.status == "protected_label"
+    assert window.history.current.objects == target.objects
+    assert window.history.current.frame_status == status
+    assert not window.history.dirty
+    assert window.repository.path_for("000001").read_bytes() == before
+    # Reopen is an explicit user action, not an implicit side effect of retracking.
+    window.reopen_review_button.click()
+    assert window._save_working_label()
+    window._move_frame(-1)
+    window.payload = replace(window.payload, clouds={"aeva": (cloud,)})
+    window._select_object_id(obj.id)
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -.5, .18])):
+        window._move_frame(1)
+    assert window.payload.tracking_result.status == "matched"
+    assert window.history.current.objects[1] == target.objects[1]
+    assert window.history.current.frame_status == "in_progress"
+
+
+def test_failed_retracking_save_preserves_previous_file_and_keeps_undo(window):
+    obj, cloud = _tracking_scene(window)
+    target = _existing_tracking_target(window, obj)
+    before = window.repository.path_for("000001").read_bytes()
+    window.tracking_check.setChecked(True)
+    window.retrack_existing_check.setChecked(True)
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -.5, .18])):
+        window._move_frame(1)
+    assert window.payload.tracking_result.status == "matched"
+    with (
+        patch.object(window.repository, "save", side_effect=OSError("disk full")),
+        patch.object(QMessageBox, "critical"),
+    ):
+        assert not window._save_working_label()
+    assert window.repository.path_for("000001").read_bytes() == before
+    assert window.history.dirty
+    window._undo()
+    assert window.history.current.objects == target.objects
+
+
+def test_retracking_is_remembered_only_for_the_opted_in_object(window):
+    obj, _ = _tracking_scene(window)
+    other = replace(obj, id="other-board")
+    window._apply_edited_label(replace(window.history.current, objects=(obj, other)), obj.id)
+    window.tracking_check.setChecked(True)
+    assert not window.retrack_existing_check.isChecked()
+    window.retrack_existing_check.setChecked(True)
+    window._select_object_id(other.id)
+    assert not window.retrack_existing_check.isChecked()
+    window._select_object_id(obj.id)
+    assert window.retrack_existing_check.isChecked()
+    window.retrack_existing_check.setChecked(False)
+    assert window._retrack_existing_ids == set()
 
 
 def test_ground_tracking_is_remembered_per_object_not_shared_with_next_selection(window):

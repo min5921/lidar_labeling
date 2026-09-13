@@ -102,6 +102,89 @@ def test_existing_target_label_is_never_automatically_moved():
     assert target.objects == (existing,)
 
 
+@pytest.mark.parametrize("adjust_z,ground", [(True, False), (False, False), (True, True)])
+def test_explicit_retracking_changes_only_existing_position_and_keeps_target_metadata(adjust_z, ground):
+    request, target, clouds = scene(ground=ground)
+    request = replace(request, options=TrackingOptions(
+        retrack_existing=True, adjust_z=adjust_z, ground_contact=ground,
+    ))
+    existing = replace(
+        request.obj, box3d=replace(request.obj.box3d, x=50, z=1.2, height=1.8, yaw=.2),
+        attributes={"occluded": True}, source={"raw": {"target": True}},
+        extra_fields={"keep": {"target": [1]}, "tracking_history": [{"method": "vendor"}]},
+    )
+    other = replace(existing, id="other", box3d=replace(existing.box3d, x=80))
+    target = replace(target, objects=(existing, other), frame_status="in_progress")
+    result = track_object(request, target, clouds)
+    assert result.status == "matched", result
+    assert result.expected_target_object == existing
+    assert result.expected_target_object is not existing
+    assert result.box.x == pytest.approx(request.obj.box3d.x + 1.1, abs=.15)
+    assert result.box.y == pytest.approx(request.obj.box3d.y - .5, abs=.15)
+    assert replace(result.box, x=existing.box3d.x, y=existing.box3d.y, z=existing.box3d.z) == existing.box3d
+    if not adjust_z:
+        assert result.box.z == existing.box3d.z
+    elif ground:
+        assert result.ground_applied
+        assert fit_box_bottom_to_points(result.box, clouds) == result.box
+    else:
+        assert result.box.z == pytest.approx(request.obj.box3d.z + .18, abs=.15)
+    assert apply_tracking_result(target, result) is target  # A result alone grants no overwrite.
+    edited = apply_tracking_result(target, result, retrack_existing=True)
+    assert edited.objects[1] == other
+    assert edited.objects[0].box3d == result.box
+    assert edited.objects[0].attributes == existing.attributes
+    assert edited.objects[0].source == existing.source
+    assert edited.objects[0].extra_fields["keep"] == existing.extra_fields["keep"]
+    assert edited.objects[0].extra_fields["tracking_history"][0] == {"method": "vendor"}
+    assert edited.objects[0].extra_fields["tracking_history"][-1]["retracked_existing"] is True
+    assert target.objects == (existing, other)
+
+
+@pytest.mark.parametrize("status", ["reviewed", "skipped"])
+def test_retracking_never_overwrites_completed_frames(status):
+    request, target, clouds = scene()
+    request = replace(request, options=TrackingOptions(retrack_existing=True))
+    target = replace(target, objects=(request.obj,), frame_status=status)
+    result = track_object(request, target, clouds)
+    assert result.status == "protected_label"
+    assert apply_tracking_result(target, result, retrack_existing=True) is target
+
+
+@pytest.mark.parametrize("change", ["class", "history", "no_points"])
+def test_retracking_rejects_mismatched_or_uncertain_existing_object(change):
+    request, target, clouds = scene()
+    request = replace(request, options=TrackingOptions(retrack_existing=True))
+    obj = replace(request.obj, box3d=replace(request.obj.box3d, x=50))
+    if change == "class":
+        obj = replace(obj, class_name="sign")
+    elif change == "history":
+        obj = replace(obj, extra_fields={"tracking_history": {"malformed": True}})
+    else:
+        clouds = ()
+    target = replace(target, objects=(obj,))
+    result = track_object(request, target, clouds)
+    assert result.status != "matched"
+    assert result.box == obj.box3d
+    assert apply_tracking_result(target, result, retrack_existing=True) is target
+
+
+@pytest.mark.parametrize("change", ["box", "metadata", "reviewed", "skipped"])
+def test_retracking_result_is_discarded_if_target_changed_since_computation(change):
+    request, target, clouds = scene()
+    request = replace(request, options=TrackingOptions(retrack_existing=True))
+    target = replace(target, objects=(request.obj,))
+    result = track_object(request, target, clouds)
+    assert result.status == "matched"
+    if change in {"reviewed", "skipped"}:
+        target = replace(target, frame_status=change)
+    elif change == "box":
+        target = replace(target, objects=(replace(request.obj, box3d=replace(request.obj.box3d, x=30)),))
+    else:
+        target = replace(target, objects=(replace(request.obj, attributes={"edited": True}),))
+    assert apply_tracking_result(target, result, retrack_existing=True) is target
+
+
 def test_two_identical_candidates_are_ambiguous():
     request, target, clouds = scene(sign=True, shift=(-1.5, 0, 0))
     other = request.clouds[0].xyz + [1.5, 0, 0]

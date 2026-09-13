@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from copy import deepcopy
 import logging
 import math
 from threading import Event
@@ -20,6 +21,7 @@ class TrackingOptions:
     adjust_z: bool = True
     max_z_step_m: float = 0.6
     ground_contact: bool = False
+    retrack_existing: bool = False
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.max_distance_m) or not 0.5 <= self.max_distance_m <= 10:
@@ -53,6 +55,7 @@ class TrackingResult:
     adjust_z: bool = False
     ground_contact: bool = False
     ground_applied: bool = False
+    expected_target_object: LabeledObject | None = None
 
 
 def track_object(
@@ -65,8 +68,11 @@ def track_object(
     Uses bounded voxel samples and local translation matching, not learned tracking.
     Suspended objects keep their point-to-box offset unless ground contact is explicitly
     enabled for this object. Size/yaw, [N,3] float32 clouds and source labels stay unchanged.
-    Call in a worker. Cancellation and uncertain matches return the original box.
+    Call in a worker. Existing boxes require explicit opt-in and an unreviewed frame;
+    their dimensions/metadata remain authoritative. Failure keeps the existing box.
     """
+    existing = next((obj for obj in target.objects if obj.id == request.obj.id), None)
+    prior_box = existing.box3d if existing is not None else request.obj.box3d
 
     def result(
         status: str, message: str, box: Box3D | None = None, score: float = 0
@@ -75,12 +81,15 @@ def track_object(
             request.obj.id,
             request.source_frame_id,
             request.target_frame_id,
-            box or request.obj.box3d,
+            box or prior_box,
             status,
             message,
             score,
             request.options.adjust_z,
             request.options.ground_contact,
+            expected_target_object=(
+                deepcopy(existing) if request.options.retrack_existing else None
+            ),
         )
 
     if request.cancel.is_set():
@@ -99,8 +108,15 @@ def track_object(
         )
     ):
         return result("incompatible", "같은 단일 LiDAR·좌표계에서만 추적할 수 있습니다")
-    if any(obj.id == request.obj.id for obj in target.objects):
-        return result("existing_label", "대상 프레임의 기존 동일 ID 라벨 유지")
+    if existing is not None:
+        if not request.options.retrack_existing:
+            return result("existing_label", "기존 동일 ID 유지 — 필요 시 ‘기존 박스도 다시 추적’을 켜세요")
+        if target.frame_status in {"reviewed", "skipped"}:
+            return result("protected_label", "검토 완료/건너뜀 프레임의 기존 라벨 유지")
+        if existing.class_name != request.obj.class_name:
+            return result("incompatible_object", "동일 ID의 클래스가 달라 기존 라벨 유지")
+        if not isinstance(existing.extra_fields.get("tracking_history", []), list):
+            return result("invalid_history", "대상 추적 이력 형식 오류 — 기존 라벨 유지")
     if not isinstance(request.obj.extra_fields.get("tracking_history", []), list):
         return result("invalid_history", "기존 추적 이력 형식 오류 — 위치 유지")
     box, options = request.obj.box3d, request.options
@@ -158,24 +174,27 @@ def track_object(
     ):
         return result("ambiguous", "비슷한 추적 후보가 여러 개 — 기존 위치 유지", score=score)
     fitted = replace(
-        box, x=box.x + float(shift[0]), y=box.y + float(shift[1]), z=box.z + float(shift[2])
+        prior_box, x=box.x + float(shift[0]), y=box.y + float(shift[1]),
+        z=box.z + float(shift[2]) if options.adjust_z else prior_box.z,
     )
     outcome = result("matched", "객체 포인트 이동량으로 위치 조정", fitted, score)
     if options.adjust_z and options.ground_contact:
         # Ground fitting is opt-in per object. Failed fitting keeps its prior z.
         ground = fit_box_to_local_ground(
-            replace(fitted, z=box.z),
+            replace(fitted, z=prior_box.z),
             target_clouds,
             max_z_step_m=options.max_z_step_m,
         )
         outcome = replace(
             outcome,
-            box=ground or replace(fitted, z=box.z),
+            box=ground or replace(fitted, z=prior_box.z),
             ground_applied=ground is not None,
             message="x/y 추적 · 지면 기준 z 보정"
             if ground is not None
             else "x/y 추적 · 지면 추정 불확실: 기존 z 유지",
         )
+    if existing is not None:
+        outcome = replace(outcome, message=f"기존 박스 재추적 · {outcome.message}")
     return outcome
 
 
@@ -262,13 +281,27 @@ def _refine_translation(
     return score, shift
 
 
-def apply_tracking_result(label: FrameLabel, result: TrackingResult) -> FrameLabel:
-    """Apply one undoable adjustment only to the newly carried object in this frame."""
+def apply_tracking_result(
+    label: FrameLabel, result: TrackingResult, *, retrack_existing: bool = False,
+) -> FrameLabel:
+    """Apply an adjustment to a carried object or an explicitly approved target snapshot."""
     if result.status != "matched" or label.frame_id != result.target_frame_id:
         return label
     obj = next((item for item in label.objects if item.id == result.object_id), None)
     if obj is None:
         return label
+    if result.expected_target_object is not None and (
+        not retrack_existing
+        or label.frame_status in {"reviewed", "skipped"}
+        or obj != result.expected_target_object
+    ):
+        return label
+    box = result.box
+    if result.expected_target_object is not None:
+        box = replace(
+            obj.box3d, x=box.x, y=box.y,
+            z=box.z if result.adjust_z else obj.box3d.z,
+        )
     history = obj.extra_fields.get("tracking_history", [])
     if not isinstance(history, list):
         logging.getLogger(__name__).warning("Malformed tracking history: %s", obj.id)
@@ -292,12 +325,13 @@ def apply_tracking_result(label: FrameLabel, result: TrackingResult) -> FrameLab
             "applied_at_utc": utc_now_iso(),
             "ground_contact": result.ground_contact,
             "ground_applied": result.ground_applied,
+            **({"retracked_existing": True} if result.expected_target_object is not None else {}),
             "delta_xyz": [
-                getattr(result.box, key) - getattr(obj.box3d, key) for key in ("x", "y", "z")
+                getattr(box, key) - getattr(obj.box3d, key) for key in ("x", "y", "z")
             ],
         },
     ]
-    edited = replace(obj, box3d=result.box, extra_fields=fields)
+    edited = replace(obj, box3d=box, extra_fields=fields)
     return replace(
         label,
         objects=tuple(edited if item.id == obj.id else item for item in label.objects),

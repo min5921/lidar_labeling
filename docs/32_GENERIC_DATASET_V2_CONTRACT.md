@@ -475,11 +475,23 @@ point/image binding, provenance, calibration context와 revision은 유지한다
 `source_label_sha256`, `imported_at_utc`를 추가한다. 기존 이력을 보존하고 배열이 아닌 이력은 거부한다.
 미리보기 이후 source 파일 hash와 현재 frame snapshot/request generation을 다시 검사한다.
 전체 추가는 하나의 Undo이며 저장은 대상 repository만 수행한다. 이 이력이 있는 객체는 명시적
-이어받기 대상으로 취급한다. 원본 JSON에 기록된 데이터 경로를 따라가거나 source 파일을 쓰지 않는다.
+이어받기 대상으로 취급한다. 자동 추적 OFF에서만 만든/가져온 객체를 모두 이어받으며, ON에서는
+선택 객체 하나만 이어받는다. 원본 JSON의 데이터 경로를 따라가거나 source 파일을 쓰지 않는다.
 
-선택 객체의 1-step 추적 보조(D42~D43)는 동일 profile의 순차 다음 frame에서 **새로 이어받은**
-객체의 x/y/z만 편집한다. 사용자의 opt-in이 필요하며 기존 대상 객체 ID와 복구 라벨은 보존한다.
+선택 객체의 1-step 추적 보조(D42~D43, D45)는 동일 profile의 순차 다음 frame에서 **선택 객체
+하나만** 이어받아 x/y/z를 편집한다. 선택이 없으면 다른 객체를 대신 복사하지 않는다.
+사용자의 opt-in이 필요하며 기존 대상 객체 ID와 복구 라벨은 보존한다.
 length/width/height/yaw와 class/source/unknown field, frame identity·binding·revision은 바꾸지 않는다.
+
+기존 동일 ID 박스의 위치는 기본적으로 유지한다. `선택 객체: 기존 박스도 다시 추적`은
+기본 OFF·실행 중 객체 ID별 opt-in이다. 같은 클래스이고 대상 frame이 `unvisited` 또는
+`in_progress`인 경우만 이전 프레임의 선택 객체 포인트를 기준으로 위치를 재계산할 수 있다.
+대상 객체의 크기·yaw·attributes·source·unknown field를 그대로 유지하며 z 조정 OFF일 때는
+대상 z도 유지한다. `reviewed`/`skipped`, 복구 복원, 불확실한 결과, 잘못된 이력 형식은 적용하지
+않는다. worker가 읽은 대상 객체 snapshot과 적용 직전 객체가 다르거나 삭제되었으면 적용을
+중단한다. 기존 박스 재추적은 한 번의 Undo로 복원하며 일반 fingerprint/revision 검사·원자 저장을
+사용한다. 기존 파일을 일괄 삭제하거나 자동 복사본/수동 편집본 여부를 추정하지 않는다.
+
 z는 기본적으로 객체 포인트의 상대 이동량이고 지면 접촉을 암묵적으로 가정하지 않는다.
 지면 보정은 실행 중 객체 ID별 별도 opt-in이며 지면 근거 부족 시 이전 z를 유지한다.
 자동 지면 보정의 최종 bottom은 수동 `B`와 같은 XY footprint(여유 0.15 m)의 하위 5% z를
@@ -492,7 +504,8 @@ z는 기본적으로 객체 포인트의 상대 이동량이고 지면 접촉을
 `ground_applied`, `applied_at_utc`로 기록한다. 이 method의 기록은 현재 frame의 마지막 적용 한 건만
 유지하고 이전 frame의 기록은 그 frame 라벨에 남긴다. 다른 method의 이력과 알 수 없는 metadata는
 보존한다. 배열이 아닌 기존 이력은 덮어쓰지 않는다. 추적 성공은 reviewed를 의미하지 않으며
-사용자가 확인·수정한 뒤 일반 원자 저장을 사용한다.
+사용자가 확인·수정한 뒤 일반 원자 저장을 사용한다. 기존 박스를 명시적으로 재추적한 기록에는
+`retracked_existing: true`를 추가하며 `delta_xyz`는 대상 기존 박스에서 실제 적용 위치까지의 차이다.
 
 라벨 provenance에는 다음 fingerprint를 기록한다.
 
