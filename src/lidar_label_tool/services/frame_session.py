@@ -151,7 +151,8 @@ class FrameSessionService:
                 "working",
                 compare_label_context(label, source),
             )
-        return OpenedFrame(source, self.importer.import_laser_labels(source), "source")
+        label = self.importer.import_laser_labels(source)
+        return OpenedFrame(source, label, "source", compare_label_context(label, source))
 
     def save(self, label: FrameLabel) -> FrameLabel:
         if self.repository is None:
@@ -163,9 +164,9 @@ def _compare_v2_label_context(
     label: FrameLabel,
     source: SourceFrameData,
 ) -> tuple[LabelContextIssue, ...]:
+    issues = list(compare_calibration_context(label, source))
     if label.revision == 0 or "profile_sha256" not in label.provenance:
-        return ()
-    issues: list[LabelContextIssue] = []
+        return tuple(issues)
     provenance = label.provenance
     checks = (
         ("profile_sha256", source.metadata.get("profile_sha256"), "profile_changed"),
@@ -247,3 +248,50 @@ def _compare_v2_label_context(
             )
         )
     return tuple(issues)
+
+
+def compare_calibration_context(
+    label: FrameLabel,
+    source: SourceFrameData,
+) -> tuple[LabelContextIssue, ...]:
+    """Check v2 calibration files only, without hashing large point clouds."""
+    if source.metadata.get("schema_version") != "2.0":
+        return ()
+    expected = source.metadata.get("calibration_sha256")
+    relative = source.metadata.get("calibration_path")
+    try:
+        current: str | None = None
+        if relative:
+            config_root = Path(str(source.metadata["configuration_root"]))
+            path = _safe_dataset_path(config_root, str(relative))
+            current = sha256_file(path) if path.is_file() else None
+    except (OSError, ValueError, KeyError) as exc:
+        return (
+            LabelContextIssue(
+                "calibration_fingerprint_unreadable",
+                f"현재 calibration fingerprint를 확인할 수 없습니다: {exc}",
+            ),
+        )
+    saved_changed = (
+        label.revision > 0
+        and "profile_sha256" in label.provenance
+        and label.calibration_state.get("fingerprint") != current
+    )
+    if expected != current:
+        return (
+            LabelContextIssue(
+                "calibration_runtime_changed",
+                "calibration이 세션 로드 후 변경되었습니다. "
+                "기존 투영을 중단하고 데이터셋을 다시 열어 보정 상태를 확인하세요. "
+                "LiDAR 라벨링은 계속할 수 있습니다.",
+            ),
+        )
+    if saved_changed:
+        return (
+            LabelContextIssue(
+                "calibration_changed",
+                "작업 라벨 저장 이후 calibration이 변경되었습니다. "
+                "현재 보정 기준으로 이미지 투영과 라벨을 재검토하세요.",
+            ),
+        )
+    return ()

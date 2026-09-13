@@ -9,15 +9,14 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $EnvironmentRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $EnvironmentDirectory))
+$ExpectedEnvironmentRoot = Join-Path $ProjectRoot ".venv"
 $ProjectPrefix = $ProjectRoot.TrimEnd("\") + "\"
 if (
-    $EnvironmentRoot -eq $ProjectRoot -or
-    -not $EnvironmentRoot.StartsWith(
-        $ProjectPrefix,
-        [StringComparison]::OrdinalIgnoreCase
+    -not $EnvironmentRoot.Equals(
+        $ExpectedEnvironmentRoot, [StringComparison]::OrdinalIgnoreCase
     )
 ) {
-    throw "EnvironmentDirectory must resolve inside the project root: $EnvironmentRoot"
+    throw "EnvironmentDirectory must be the project's .venv directory: $EnvironmentRoot"
 }
 $EnvironmentPython = Join-Path $EnvironmentRoot "Scripts\python.exe"
 $RuntimeLockPath = Join-Path $ProjectRoot "requirements-lock.txt"
@@ -191,6 +190,9 @@ function Remove-ProjectEnvironment {
     }
     if ($EnvironmentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
         throw "Refusing to remove a linked environment: $ResolvedEnvironment"
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $ResolvedEnvironment "pyvenv.cfg") -PathType Leaf)) {
+        throw "Refusing to remove .venv without pyvenv.cfg. Preserve or rename this folder manually before setup: $ResolvedEnvironment"
     }
 
     Write-Host "[SETUP] Removing generated environment: $ResolvedEnvironment"

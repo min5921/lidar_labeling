@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QVector3D
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
+from PySide6.QtGui import QKeyEvent, QKeySequence, QMouseEvent, QVector3D, QWheelEvent
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from lidar_label_tool.app.config import default_config_path
@@ -425,3 +425,169 @@ def test_tracking_worker_failure_keeps_carried_box_and_frame_usable(window):
     assert window._selected_object().box3d == obj.box3d
     assert window.frame_combo.isEnabled()
     assert "추적 계산 실패" in window.status_message.text()
+
+
+def _control_event(event_type):
+    modifiers = (
+        Qt.KeyboardModifier.ControlModifier
+        if event_type == QEvent.Type.KeyPress
+        else Qt.KeyboardModifier.NoModifier
+    )
+    return QKeyEvent(event_type, Qt.Key.Key_Control, modifiers)
+
+
+def test_control_wheel_changes_only_view_not_selected_box_z(window):
+    window._create_box(1, 2)
+    original = window._selected_object()
+    original_fov = window.view_3d.opts["fov"]
+    wheel = QWheelEvent(
+        QPointF(30, 30), QPointF(30, 30), QPoint(), QPoint(0, 120),
+        Qt.MouseButton.NoButton, Qt.KeyboardModifier.ControlModifier,
+        Qt.ScrollPhase.NoScrollPhase, False,
+    )
+    with patch.object(QApplication, "focusWidget", return_value=window.view_3d):
+        QApplication.sendEvent(window.view_3d, _control_event(QEvent.Type.KeyPress))
+        QApplication.sendEvent(window.view_3d, wheel)
+        QApplication.sendEvent(window.view_3d, _control_event(QEvent.Type.KeyRelease))
+    assert window.view_3d.opts["fov"] != original_fov
+    assert window._selected_object() == original
+
+
+@pytest.mark.parametrize("pointer_event", [
+    QEvent.Type.MouseButtonPress,
+    QEvent.Type.MouseMove,
+    QEvent.Type.MouseButtonRelease,
+    QEvent.Type.MouseButtonDblClick,
+    QEvent.Type.TabletPress,
+    QEvent.Type.TouchBegin,
+])
+def test_control_pointer_gesture_is_not_control_alone(window, pointer_event):
+    with patch.object(window, "_nudge_selected") as nudge:
+        window.eventFilter(window.view_3d, _control_event(QEvent.Type.KeyPress))
+        window.eventFilter(window.view_3d, QEvent(pointer_event))
+        window.eventFilter(window.view_3d, _control_event(QEvent.Type.KeyRelease))
+    nudge.assert_not_called()
+
+
+def _start_box_drag(window, view_name):
+    obj = window._selected_object()
+    view = getattr(window, view_name)
+    if view_name == "bev_view":
+        view._begin_box_edit(obj, "move", None, obj.box3d.x, obj.box3d.y, 10, 10)
+        view._update_edit_preview(obj.box3d.x + 1, obj.box3d.y)
+    else:
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress, QPointF(10, 10), QPointF(10, 10),
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        with (
+            patch.object(view, "_event_data_point", return_value=QPointF(obj.box3d.x, obj.box3d.z)),
+            patch.object(view, "_hit_selected_handle", return_value="move"),
+        ):
+            view.mousePressEvent(press)
+        view._update_edit_preview(obj.box3d.z + 1)
+    return view
+
+
+@pytest.mark.parametrize("view_name", ["bev_view", "side_view"])
+def test_frame_switch_discards_previous_frame_drag_without_touching_existing_object(window, view_name):
+    window.bev_visible_check.setChecked(True)
+    window.side_visible_check.setChecked(True)
+    window._create_box(1, 2)
+    obj = window._selected_object()
+    target = window.importer.import_laser_labels(window.adapter.load_source_frame("000001"))
+    existing = replace(obj, box3d=replace(obj.box3d, x=20, z=4))
+    window.repository.save(replace(target, objects=(existing,)))
+    view = _start_box_drag(window, view_name)
+
+    window._move_frame(1)
+    assert window._selected_object() == existing
+    assert window.bev_view._move_object is None
+    assert window.side_view._edit_object is None
+    release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease, QPointF(40, 10), QPointF(40, 10),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    with patch.object(view, "_event_data_point", return_value=QPointF(2, 2)):
+        view.mouseReleaseEvent(release)
+    assert window._selected_object() == existing
+    assert not window.history.dirty
+
+
+@pytest.mark.parametrize("view_name", ["bev_view", "side_view"])
+def test_loading_cancels_drag_and_blocks_new_box_gestures(window, view_name):
+    window.bev_visible_check.setChecked(True)
+    window.side_visible_check.setChecked(True)
+    window._create_box(1, 2)
+    view = _start_box_drag(window, view_name)
+    with patch.object(window.executor, "submit", return_value=Future()):
+        window._move_frame(1)
+    assert not view._editing_enabled
+    assert window.bev_view._move_object is None
+    assert window.side_view._edit_object is None
+    before = window.history.current
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress, QPointF(10, 10), QPointF(10, 10),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    with patch.object(view, "_event_data_point") as box_pointer:
+        view.mousePressEvent(press)
+        box_pointer.assert_not_called()
+    assert window.history.current == before
+    window._show_load_error(window.request_generation, "000001", "fixture load failed")
+    assert view._editing_enabled
+
+
+def test_frame_switch_cancels_unfinished_create_preview(window):
+    window.create_button.setChecked(True)
+    view = window.bev_view
+    view._drag_start_data = (1, 2)
+    view._drag_start_pixel = (10, 10)
+    view._update_create_preview(3, 4)
+    assert view._create_preview is not None
+    window._move_frame(1)
+    assert view._drag_start_data is None
+    assert view._create_preview is None
+    assert not window.history.current.objects
+
+
+def test_saved_creation_can_be_undone_saved_redone_and_saved_again(window):
+    window._create_box(1, 2)
+    obj = window._selected_object()
+    assert window._save_working_label()
+    assert window.history.baseline.revision == 1
+    window._undo()
+    assert window.history.current.objects == ()
+    assert window.history.current.revision == 1
+    assert window.history.current.provenance == window.history.baseline.provenance
+    assert window.history.dirty
+    assert window._save_working_label()
+    assert window.repository.load("000000").revision == 2
+    assert window.repository.load("000000").objects == ()
+    window._redo()
+    assert window.history.current.objects == (obj,)
+    assert window.history.current.revision == 2
+    assert window.history.dirty
+    assert window._save_working_label()
+    saved = window.repository.load("000000")
+    assert saved.revision == 3
+    assert saved.objects == (obj,)
+    assert not window.history.dirty
+
+
+def test_undo_after_save_still_rejects_real_external_file_changes(window):
+    window._create_box(1, 2)
+    assert window._save_working_label()
+    path = window.repository.path_for("000000")
+    externally_changed = path.read_bytes() + b" "
+    path.write_bytes(externally_changed)
+    window._undo()
+    assert window.history.current.revision == 1
+    with patch.object(QMessageBox, "critical") as error:
+        assert not window._save_working_label()
+    assert "changed since load" in error.call_args.args[2]
+    assert path.read_bytes() == externally_changed
+    assert window.history.dirty

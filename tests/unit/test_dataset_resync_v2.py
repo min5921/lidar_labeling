@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
+import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +23,72 @@ from tests.fixture_builders import create_v2_dataset
 
 
 class DatasetResyncV2Tests(unittest.TestCase):
+    def test_mixed_camera_and_lidar_only_profiles_resync_in_either_order(self) -> None:
+        for camera_first in (True, False):
+            with self.subTest(camera_first=camera_first), TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = create_v2_dataset(root, with_camera=True)
+                camera_profile = manifest["profiles"][0]
+                lidar_profile = deepcopy(camera_profile)
+                lidar_profile["id"] = "lidar_only_profile"
+                lidar_profile["camera"] = None
+                lidar_profile["frame_index"]["generation"] = {
+                    "method": "lidar_only", "tolerance_ns": None,
+                }
+                old_index = root / camera_profile["frame_index"]["path"]
+                records = [
+                    json.loads(line)
+                    for line in old_index.read_text(encoding="utf-8").splitlines()
+                ]
+                for record in records:
+                    record["profile_id"] = lidar_profile["id"]
+                    record["camera"] = None
+                    record["match"] = {
+                        "method": "lidar_only",
+                        "status": "not_requested",
+                        "tolerance_ns": None,
+                    }
+                index_bytes = "".join(
+                    json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+                    for record in records
+                ).encode("utf-8")
+                new_index = old_index.with_name("lidar_only_profile.frames.jsonl")
+                new_index.write_bytes(index_bytes)
+                lidar_profile["frame_index"]["path"] = new_index.relative_to(root).as_posix()
+                lidar_profile["frame_index"]["sha256"] = hashlib.sha256(index_bytes).hexdigest()
+                manifest["profiles"] = (
+                    [camera_profile, lidar_profile]
+                    if camera_first else [lidar_profile, camera_profile]
+                )
+                (root / "dataset.json").write_text(json.dumps(manifest), encoding="utf-8")
+                protected: dict[Path, bytes] = {}
+                for profile_id in ("aeva_profile", "lidar_only_profile"):
+                    adapter = DeviceCentricV2Adapter(root, profile_id)
+                    repository = V2LabelRepository.for_sidecar(adapter)
+                    label = WaymoLabelImporter({}, "device_centric_v2").import_laser_labels(
+                        adapter.load_source_frame("000000")
+                    )
+                    repository.save(label)
+                    path = repository.path_for("000000")
+                    protected[path] = path.read_bytes()
+                for path in (root / "sensors").rglob("*"):
+                    if path.is_file():
+                        protected[path] = path.read_bytes()
+
+                analysis = analyze_dataset_resync_v2(DatasetResyncRequest(root, "aeva_profile"))
+                self.assertEqual(analysis.target.qa.matched_camera_count, 2)
+                result = resynchronize_dataset_v2(DatasetResyncRequest(root, "aeva_profile"))
+                self.assertEqual(result.manifest_revision, 2)
+                lidar_only = DeviceCentricV2Adapter(root, "lidar_only_profile")
+                self.assertIsNone(lidar_only.profile.camera)
+                self.assertEqual(lidar_only.index.frame_ids, ("000000", "000001"))
+                self.assertTrue(all(
+                    lidar_only.frame_record(frame_id).camera is None
+                    for frame_id in lidar_only.index.frame_ids
+                ))
+                for path, before in protected.items():
+                    self.assertEqual(path.read_bytes(), before)
+
     def test_cancel_during_fingerprint_keeps_previous_generation_active(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

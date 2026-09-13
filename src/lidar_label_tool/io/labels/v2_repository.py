@@ -59,6 +59,7 @@ class V2LabelRepository:
         self.profile_id = adapter.profile.id
         self.label_lidar_id = adapter.active_lidar.id
         self.reference_frame = adapter.active_lidar.coordinate_frame
+        self._loaded_fingerprints: dict[str, str] = {}
 
     @classmethod
     def for_sidecar(cls, adapter: DeviceCentricV2Adapter) -> V2LabelRepository:
@@ -97,13 +98,24 @@ class V2LabelRepository:
         return self.path_for(frame_id).is_file()
 
     def load(self, frame_id: str) -> FrameLabel:
+        label, fingerprint = self._read_label(frame_id)
+        self._loaded_fingerprints[frame_id] = fingerprint
+        return label
+
+    def _read_label(self, frame_id: str) -> tuple[FrameLabel, str]:
         path = self.path_for(frame_id)
-        document = read_json_document(path)
+        try:
+            payload = path.read_bytes()
+            document = json.loads(payload.decode("utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise JsonDocumentError(
+                f"cannot read JSON document {path}: {type(exc).__name__}: {exc}"
+            ) from exc
         validate_json_document(document, "label-v2.schema.json")
         if not isinstance(document, Mapping):
             raise JsonDocumentError(f"v2 label root must be an object: {path}")
         self._require_identity(document, self.adapter.frame_record(frame_id), path=path)
-        return self._frame_label(document)
+        return self._frame_label(document), hashlib.sha256(payload).hexdigest()
 
     def load_backup(self, frame_id: str) -> FrameLabel:
         path = self.path_for(frame_id).with_suffix(".json.bak")
@@ -121,9 +133,13 @@ class V2LabelRepository:
         disk_revision = 0
         initial_fingerprint: str | None = None
         if target.exists():
-            disk_label = self.load(label.frame_id)
+            disk_label, initial_fingerprint = self._read_label(label.frame_id)
             disk_revision = disk_label.revision
-            initial_fingerprint = _sha256(target)
+            expected_fingerprint = self._loaded_fingerprints.get(label.frame_id)
+            if expected_fingerprint != initial_fingerprint:
+                raise LabelConflictError(
+                    "working label changed since load; reload before saving"
+                )
         if disk_revision != label.revision:
             raise LabelConflictError(
                 f"working label changed on disk: expected revision {label.revision}, "
@@ -140,10 +156,13 @@ class V2LabelRepository:
         try:
             _write_json_exclusive(temporary, payload)
             self._validate_written_document(temporary, label.frame_id, revision)
+            saved_fingerprint = _sha256(temporary)
             if target.exists():
                 if initial_fingerprint is None or _sha256(target) != initial_fingerprint:
                     raise LabelConflictError("working label changed during save")
                 shutil.copy2(target, backup_temporary)
+                if _sha256(backup_temporary) != initial_fingerprint:
+                    raise LabelConflictError("working label changed while making backup")
                 self._validate_written_document(
                     backup_temporary,
                     label.frame_id,
@@ -153,6 +172,7 @@ class V2LabelRepository:
             elif initial_fingerprint is not None:
                 raise LabelConflictError("working label was removed during save")
             os.replace(temporary, target)
+            self._loaded_fingerprints[label.frame_id] = saved_fingerprint
         finally:
             for path in (temporary, backup_temporary):
                 try:
@@ -425,49 +445,7 @@ class V2LabelRepository:
         return result
 
     def _calibration_state(self) -> dict[str, Any]:
-        camera = self.adapter.profile.camera
-        if camera is None:
-            return {
-                "requested_mode": "none",
-                "effective_mode": "none",
-                "path": None,
-                "fingerprint": None,
-                "status": "not_configured",
-            }
-        if camera.mode == "display_only":
-            return {
-                "requested_mode": "display_only",
-                "effective_mode": "display_only",
-                "path": None,
-                "fingerprint": None,
-                "status": "not_configured",
-            }
-        assert camera.calibration_path is not None
-        path = _config_path(self.adapter.configuration_root, camera.calibration_path)
-        if not path.is_file():
-            return {
-                "requested_mode": "calibrated",
-                "effective_mode": "display_only",
-                "path": camera.calibration_path,
-                "fingerprint": None,
-                "status": "missing",
-            }
-        fingerprint = _sha256(path)
-        if fingerprint != camera.calibration_sha256:
-            return {
-                "requested_mode": "calibrated",
-                "effective_mode": "display_only",
-                "path": camera.calibration_path,
-                "fingerprint": fingerprint,
-                "status": "invalid",
-            }
-        return {
-            "requested_mode": "calibrated",
-            "effective_mode": "calibrated",
-            "path": camera.calibration_path,
-            "fingerprint": fingerprint,
-            "status": "valid",
-        }
+        return self.adapter.current_calibration_state()
 
 
 def _write_json_exclusive(path: Path, document: Mapping[str, Any]) -> None:

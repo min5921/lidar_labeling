@@ -398,7 +398,7 @@ def _synchronize_all_profiles(
             profile_id=profile.id,
             lidar_samples=lidar_samples,
             method=method,
-            camera_samples=(camera_samples or ()),
+            camera_samples=(camera_samples or ()) if method != "lidar_only" else (),
             lidar_timestamps=_timestamp_table(
                 adapter.data_root,
                 adapter.active_lidar.timestamp,

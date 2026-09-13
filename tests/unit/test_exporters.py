@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.exporters import (
@@ -47,6 +48,61 @@ def _label(frame_id: str = "000007") -> FrameLabel:
 
 
 class ExporterTests(unittest.TestCase):
+    def test_existing_output_is_never_overwritten(self) -> None:
+        for exporter in (LidarLabelJsonExporter(), CenterPointIntermediateJsonExporter()):
+            with self.subTest(format=exporter.name), TemporaryDirectory() as directory:
+                output = Path(directory) / "000007.json"
+                output.write_bytes(b"existing source or working label")
+                with self.assertRaises(FileExistsError):
+                    exporter.export_frame(_label(), output)
+                self.assertEqual(output.read_bytes(), b"existing source or working label")
+                self.assertEqual([path.name for path in output.parent.iterdir()], [output.name])
+
+    def test_concurrent_output_is_preserved_and_temporary_is_cleaned(self) -> None:
+        import os
+
+        real_link = os.link
+        for exporter in (LidarLabelJsonExporter(), CenterPointIntermediateJsonExporter()):
+            with self.subTest(format=exporter.name), TemporaryDirectory() as directory:
+                output = Path(directory) / "000007.json"
+
+                def racing_link(source: Path, target: Path) -> None:
+                    target.write_bytes(b"other writer")
+                    real_link(source, target)
+
+                with patch("lidar_label_tool.exporters.atomic_output.os.link", racing_link):
+                    with self.assertRaises(FileExistsError):
+                        exporter.export_frame(_label(), output)
+                self.assertEqual(output.read_bytes(), b"other writer")
+                self.assertEqual([path.name for path in output.parent.iterdir()], [output.name])
+
+    def test_publish_failure_leaves_no_partial_output(self) -> None:
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "000007.json"
+            with patch(
+                "lidar_label_tool.exporters.atomic_output.os.link", side_effect=OSError("I/O")
+            ):
+                with self.assertRaisesRegex(OSError, "cannot publish export safely"):
+                    LidarLabelJsonExporter().export_frame(_label(), output)
+            self.assertEqual(list(output.parent.iterdir()), [])
+
+    def test_batch_checks_all_existing_outputs_before_first_write(self) -> None:
+        with TemporaryDirectory() as directory:
+            output = Path(directory)
+            existing = output / "000008.json"
+            existing.write_bytes(b"preserved")
+            with self.assertRaises(FileExistsError):
+                export_frames((_label(), _label("000008")), LidarLabelJsonExporter(), output)
+            self.assertFalse((output / "000007.json").exists())
+            self.assertEqual(existing.read_bytes(), b"preserved")
+
+    def test_batch_rejects_casefold_collisions_before_write(self) -> None:
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "export"
+            with self.assertRaisesRegex(ValueError, "duplicate frame_id"):
+                export_frames((_label("Frame"), _label("frame")), LidarLabelJsonExporter(), output)
+            self.assertFalse(output.exists())
+
     def test_default_registry_lookup(self) -> None:
         registry = create_default_registry()
 

@@ -78,8 +78,10 @@ Qt DLL 검증이 실패하면 setup은 잠금된 PySide6·Essentials·Addons·sh
 .\launchers\windows\setup_windows.bat -Recreate
 ```
 
-`-Recreate`는 프로젝트 안의 생성물 `.venv`만 삭제한 뒤 다시 만든다. 데이터셋, 작업 라벨,
-설정 파일은 삭제하지 않는다. 그래도 `QtWidgets` DLL 오류가 나면 Microsoft Visual C++ x64
+`-Recreate`는 프로젝트 안의 생성물 `.venv`만 삭제한 뒤 다시 만든다. 임의의
+`-EnvironmentDirectory`는 거부하며, `.venv`에도 `pyvenv.cfg`가 없으면 삭제하지 않는다.
+이 경우 폴더 내용을 확인하고 기존 `.venv`의 이름을 별도로 바꿔 보존한 뒤 setup을 다시 실행한다.
+데이터셋, 작업 라벨, 설정 파일은 삭제하지 않는다. 그래도 `QtWidgets` DLL 오류가 나면 Microsoft Visual C++ x64
 runtime을 설치 또는 복구하고 `winver`에서 Windows 10 1809 이상 또는 Windows 11 x64인지
 확인한다.
 

@@ -38,6 +38,7 @@ class LabelRepository:
     def __init__(self, annotation_dir: Path, dataset_id: str) -> None:
         self.annotation_dir = Path(annotation_dir)
         self.dataset_id = _safe_component(dataset_id, "dataset_id")
+        self._loaded_fingerprints: dict[str, str] = {}
 
     @classmethod
     def for_workspace(cls, workspace_root: Path, dataset_id: str) -> LabelRepository:
@@ -59,13 +60,18 @@ class LabelRepository:
         return self.path_for(frame_id).is_file()
 
     def load(self, frame_id: str) -> FrameLabel:
+        label, fingerprint = self._read_label(frame_id)
+        self._loaded_fingerprints[frame_id] = fingerprint
+        return label
+
+    def _read_label(self, frame_id: str) -> tuple[FrameLabel, str]:
         path = self.path_for(frame_id)
-        with path.open("r", encoding="utf-8") as stream:
-            data = json.load(stream)
+        payload = path.read_bytes()
+        data = json.loads(payload.decode("utf-8"))
         label = FrameLabel.from_dict(data)
         if label.dataset_id != self.dataset_id or label.frame_id != frame_id:
             raise ValueError(f"working label identity mismatch: {path}")
-        return label
+        return label, hashlib.sha256(payload).hexdigest()
 
     def save(self, label: FrameLabel) -> FrameLabel:
         if label.dataset_id != self.dataset_id:
@@ -76,9 +82,13 @@ class LabelRepository:
         disk_revision = 0
         initial_fingerprint: str | None = None
         if target.exists():
-            disk_label = self.load(label.frame_id)
+            disk_label, initial_fingerprint = self._read_label(label.frame_id)
             disk_revision = disk_label.revision
-            initial_fingerprint = _sha256(target)
+            expected_fingerprint = self._loaded_fingerprints.get(label.frame_id)
+            if expected_fingerprint != initial_fingerprint:
+                raise LabelConflictError(
+                    "working label changed since load; reload before saving"
+                )
         if disk_revision != label.revision:
             raise LabelConflictError(
                 f"working label changed on disk: expected revision {label.revision}, "
@@ -102,15 +112,19 @@ class LabelRepository:
                 validated = FrameLabel.from_dict(json.load(stream))
             if validated.revision != saved.revision:
                 raise ValueError("temporary label revision validation failed")
+            saved_fingerprint = _sha256(temporary)
 
             if target.exists():
                 if initial_fingerprint is None or _sha256(target) != initial_fingerprint:
                     raise LabelConflictError("working label changed during save")
                 shutil.copy2(target, backup_temporary)
+                if _sha256(backup_temporary) != initial_fingerprint:
+                    raise LabelConflictError("working label changed while making backup")
                 os.replace(backup_temporary, backup)
             elif initial_fingerprint is not None:
                 raise LabelConflictError("working label was removed during save")
             os.replace(temporary, target)
+            self._loaded_fingerprints[label.frame_id] = saved_fingerprint
         finally:
             for path in (temporary, backup_temporary):
                 try:

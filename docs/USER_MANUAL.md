@@ -583,7 +583,10 @@ Launcher를 설치한 뒤 새 PowerShell을 연다. Windows setup/run 스크립�
 
 ### 명시적 라벨 export
 
-일반 저장은 export를 자동 실행하지 않는다. 소스 설치 환경의 PowerShell에서 별도로 실행한다.
+일반 저장은 export를 자동 실행하지 않는다. 첫 화면의 `라벨 내보내기`에서 dataset과 별도
+출력 폴더를 선택한다. 여러 v2 profile이 있으면 대상 LiDAR profile을 명시적으로 선택한다.
+`데이터셋 검사`와 `라벨 통계`도 같은 profile 선택 절차를 사용한다.
+CLI에서는 다음처럼 실행한다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m lidar_label_tool export <dataset> --format lidar_label_json --output <output-folder>
@@ -591,9 +594,16 @@ Launcher를 설치한 뒤 새 PowerShell을 연다. Windows setup/run 스크립�
 ```
 
 특정 프레임만 내보내려면 `--frame <frame_id>`를 사용하며 여러 번 지정할 수 있다. 별도 작업 폴더를
-사용했다면 `--workspace <workspace-root>`를 함께 지정한다. `centerpoint_intermediate_json`은
+사용했다면 `--workspace <workspace-root>`를 함께 지정한다. v2는 `--profile <profile_id>`로
+대상을 지정한다. 생략한 CLI는 기본 profile을 사용한다. `centerpoint_intermediate_json`은
 좌표와 radian yaw를 전달하기 위한 중간 JSON이며 공식 CenterPoint/OpenPCDet 학습 포맷이라고
 간주하면 안 된다.
+
+Export는 기존 파일을 덮어쓰지 않으며, working/source label이나 generation/calibration 폴더를
+출력 대상으로 사용하지 않는다. 재실행할 때는 새 폴더를 선택한다. 동시 생성된 파일도 보존하며
+완성된 임시 파일을 원자적으로 공개한다. hard link를 지원하지 않는 파일시스템에서는 안전하게
+실패하므로 로컬 NTFS/ext4 등의 출력 폴더를 사용한 뒤 결과를 복사한다. 배치 중 I/O 실패 시에는
+이미 완료된 export 파일 수와 실패 frame을 확인한다. 이전 작업 라벨은 변경하지 않는다.
 
 ### 3D 화면이 비어 있는 경우
 
@@ -607,5 +617,5 @@ Launcher를 설치한 뒤 새 PowerShell을 연다. Windows setup/run 스크립�
 - 원본 멀티 LiDAR 자동 calibration 추정
 - frame reviewed/skipped workflow
 - source-compatible 별도 export
-- GUI export 대화상자
+- 전체-frame v1→v2 자동 migration (계약만 정의됨; 객체 가져오기와 다름)
 - Python 미설치 PC용 단일 실행 파일 배포

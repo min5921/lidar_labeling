@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from lidar_label_tool.domain.labels import FrameLabel
 
@@ -54,6 +54,19 @@ class AnnotationHistory:
         return self.current
 
     def mark_saved(self, label: FrameLabel) -> None:
+        # Undo changes annotation content, not the revision/fingerprints of the
+        # file we last saved. Keep every snapshot based on that same disk state
+        # so undo/redo remain saveable without weakening repository conflicts.
+        def rebase(snapshot: FrameLabel) -> FrameLabel:
+            return replace(
+                snapshot,
+                revision=label.revision,
+                saved_at_utc=label.saved_at_utc,
+                provenance=label.provenance,
+                calibration_state=label.calibration_state,
+            )
+
+        self._undo = [rebase(snapshot) for snapshot in self._undo]
+        self._redo = [rebase(snapshot) for snapshot in self._redo]
         self.current = label
         self.baseline = label
-

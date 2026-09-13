@@ -1,5 +1,9 @@
 # 아키텍처
 
+현재 `codex/v2` 소스 기준의 책임 지도다. 입력·좌표·identity의 규범은
+[v2 계약](32_GENERIC_DATASET_V2_CONTRACT.md)을 우선한다. 기능별 검토 결과와 후속 정리는
+[프로젝트 검토·유지보수](35_PROJECT_REVIEW_AND_MAINTENANCE.md)를 참고한다.
+
 ## 의존 방향
 
 ```text
@@ -41,24 +45,23 @@ exporters: domain을 외부 포맷으로 변환
 - BEV/측면 폴리곤
 - 좌표 변환과 카메라 투영
 
-### `calibration/`
+### `calibration/`, `calibration_editor/`
 
-- sensor calibration domain model
-- `T_target_source` 4x4 행렬 검증과 적용
-- LiDAR → reference, reference → camera 변환 chain
-- 수동 x/y/z/roll/pitch/yaw delta 합성
-- calibration session의 apply/preview/reset/save
-- 센서별 활성화와 정렬 확인용 색상 구분
+- `calibration/waymo_camera.py`: camera 보정 해석과 projection
+- `calibration_editor/`: GUI 비의존 보정 모델·투영·저장과 reference box 읽기
+- `ui/calibration_editor/`: 수동 6DoF/intrinsic 편집 화면
+- `geometry/transforms.py`: `T_target_source` 검증과 좌표 변환
+- v2 LiDAR는 label-ready 단일 cloud이며 여기서 여러 LiDAR를 자동 병합하지 않음
 
-### `io/loaders/`
+### `io/loaders/`, `io/labels/`
 
-- 공통 point-cloud loader 프로토콜
-- manifest/schema 기반 float32 NxN BIN loader
-- 이미지 loader
-- 보정 loader
-- 데이터셋 스캔 및 프레임 매칭
-- JSON label repository와 원자적 저장
+- manifest/schema 기반 float32 NxC BIN 및 PCD ASCII/binary loader
+- JSON label repository와 원자적 저장, v1/v2 repository 명시적 분기
 - source label importer와 working label repository 분리
+- 명시적 객체 가져오기의 source schema·fingerprint 검사
+
+이미지 로드와 프레임 조합은 `workers/frame_loader.py`, 데이터셋 스캔과 파일 경로 해석은
+adapter가 담당한다. 모든 I/O가 point loader 안에 있는 것은 아니다.
 
 ### `io/dataset_v2.py`, `io/json_schema.py`
 
@@ -69,29 +72,35 @@ exporters: domain을 외부 포맷으로 변환
 
 ### `io/adapters/`
 
-- `DeviceCentricAdapter`: 정식 sensor/device 중심 입력
-- `FrameCentricWaymoAdapter`: 현재 전달된 frame 중심 자료
+- `DeviceCentricV2Adapter`: 범용 v2의 선택 profile, frozen index, 단일 LiDAR 입력
+- `DeviceCentricAdapter`: v1 호환 sensor/device 중심 입력
+- `WaymoFrameCentricAdapter`: Waymo frame 중심 호환 입력
 - 물리적 파일 배치를 공통 `FrameBundle`로 변환
-- manifest, frame ID, timestamp 기반 동기화
+- v2 런타임은 확정 index만 읽음; nearest 계산은 구성·재동기화 서비스의 책임
 - source coordinate frame과 포인트 column 계약 전달
 
 ### `services/`
 
 - 현재 프레임/선택 객체/dirty 상태
 - 객체 추가, 삭제, 이동, 크기, 회전, 클래스 변경
-- undo/redo 명령(1차 후반 단계)
+- `AnnotationHistory`의 undo/redo 및 dirty 기준
 - 프레임 이동 전 저장 정책
 - calibration ON/OFF와 활성 LiDAR 상태
 - source frame data와 working label을 `FrameBundle`로 조합
 - 범용 v2의 sensor/profile 참조, hash, 경로 경계, frame binding을 읽기 전용으로 검증
+- dataset 구성/profile 추가/재동기화 generation transaction
+- 객체 수동 연결·폴더 간 이관·선택 객체 1-step 추적 보조
+- profile 선택 정보·라벨 통계·명시적 export
 
 v2 구성·동기화·저장은 UI가 JSON을 직접 쓰지 않고 service 계층의 transaction을 통해 수행한다.
-현재 foundation은 읽기와 검증까지 구현되어 있고, 생성 transaction과 runtime adapter는 다음
-Gate에서 추가한다. 기존 v1 adapter와 one_chip 변환기는 호환 계층으로 유지한다.
+생성 transaction과 runtime adapter까지 구현되어 있다. 기존 v1 adapter와 one_chip 변환기는
+호환 계층으로 유지한다. 계약에 정의된 전체-frame v1→v2 migrator는 아직 구현된 것으로
+간주하지 않는다.
 
 ### `workers/`
 
-- dataset scan, frame load, prefetch, export background task
+- `frame_loader.py`의 frame/cloud/image 로드와 선택 객체 추적
+- 구성·export 등 장시간 GUI 작업은 별도 worker에서 service 실행
 - request generation과 cancel token
 - worker 결과를 immutable data로 main thread에 전달
 - Qt widget과 OpenGL item에는 직접 접근하지 않음
@@ -105,21 +114,22 @@ Gate에서 추가한다. 기존 v1 adapter와 one_chip 변환기는 호환 계�
 - object/frame/parameter panel
 - calibration panel과 before/after overlay
 
-## 핵심 인터페이스
+## 현재 핵심 호출 계약
 
-- `PointCloudLoader.can_load(path, spec) -> bool`
-- `PointCloudLoader.load(path, spec: PointCloudSpec) -> PointCloudData`
-- `LabelRepository.load(frame) -> FrameLabel`
-- `LabelRepository.save(frame_label) -> None`
-- `LabelImporter.import_frame(source_frame) -> FrameLabel`
-- `LabelExporter.export_frame(frame_label, destination, options) -> ExportReport`
-- `CalibrationProvider.load(frame) -> SensorCalibration | None`
-- `CalibrationSession.transform_cloud(cloud: PointCloudData) -> PointCloudData`
-- `DatasetAdapter.scan(root) -> DatasetIndex`
+- BIN/PCD loader: `can_load(path, spec) -> bool`
+- BIN/PCD loader: `load(path, spec, *, sensor_id, return_id) -> PointCloudData`
+- repository: `load(frame_id) -> FrameLabel`
+- repository: `save(frame_label) -> FrameLabel` (성공 revision 반영)
+- importer: `import_laser_labels(source_frame) -> FrameLabel`
+- `LabelExporter.validate(frame_label) -> None`
+- `LabelExporter.export_frame(frame_label, output_path) -> None`
+- `DatasetAdapter.scan() -> DatasetIndex`
 - `DatasetAdapter.load_source_frame(frame_id) -> SourceFrameData`
-- `FrameSessionService.open_frame(frame_id) -> FrameBundle`
+- `FrameSessionService.open_frame(frame_id) -> OpenedFrame`
 
-구체 클래스가 아닌 이 인터페이스에 의존하여 새 포맷을 추가할 때 UI 수정이 발생하지 않도록 한다.
+`DatasetAdapter`와 `LabelExporter`는 Protocol이다. loader/repository/importer의 위 표기는
+현재 구현의 호출 형태이며 모두 별도의 Protocol 클래스로 선언되었다는 뜻은 아니다.
+새 포맷은 해당 경계에서 추가하여 UI가 포맷별 파일 구조를 해석하지 않게 한다.
 
 `PointCloudSpec`에는 dtype, byte order, column 이름, source coordinate frame이 포함된다. loader가 파일명만 보고 column 수나 좌표 frame을 추측해서는 안 된다.
 
@@ -129,10 +139,15 @@ Gate에서 추가한다. 기존 v1 adapter와 one_chip 변환기는 호환 계�
 
 - dataset과 label은 사용자가 선택한 외부 경로에 둔다.
 - bundle에 포함된 `configs/default.json`, schema, icon은 읽기 전용 resource이다.
-- 사용자 override 설정과 로그는 Qt의 표준 application-data 경로를 사용한다.
+- 사용자 override 설정과 로그는 `app/runtime_paths.py`가 정하는 Windows AppData/Linux XDG
+  사용자 쓰기 가능 경로를 사용한다.
 - 현재 작업 디렉터리나 개발 저장소 상대 경로에 의존하지 않는다.
 - 개발 실행과 배포 실행에서 동일한 resource resolver API를 사용한다.
 
 ## 상태 동기화
 
-단일 `AnnotationSession`이 현재 프레임, 객체 목록, 선택 ID, dirty 상태를 소유한다. 각 view는 별도 박스 사본을 소유하지 않고 session 변경 신호를 받아 다시 그린다. 이 규칙이 네 뷰 간 값 불일치를 막는다.
+현재 `MainWindow`가 활성 frame과 선택 ID, `AnnotationHistory`가 현재 label·undo/redo·dirty
+기준을 소유한다. `FrameSessionService`는 source와 working label을 조합한다. view의 박스는
+렌더링/제스처용 snapshot이며 편집 결과는 공통 label 상태로 되돌아와 모든 view에 반영된다.
+프레임 요청 시 view의 진행 중 gesture를 취소하고 로드 중 편집을 잠근다. 오래된 worker 결과는
+request generation으로 버린다. 단일 `AnnotationSession` 클래스로 통합된 상태는 아니다.

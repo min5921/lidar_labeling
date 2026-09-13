@@ -1,5 +1,8 @@
 # 구현 상태
 
+현행 구조·안전성 검토와 후속 순서는 [프로젝트 검토·유지보수](35_PROJECT_REVIEW_AND_MAINTENANCE.md)를
+함께 확인한다. 아래 호환 기능 목록의 멀티 LiDAR/카메라 동작은 v2 단일 profile 계약을 대체하지 않는다.
+
 ## 범용 데이터셋 v2 구현 완료 범위
 
 완료:
@@ -21,6 +24,20 @@
 
 GUI에서 `dataset.json`이 없는 폴더를 선택하면 범용 구성 화면으로 연결한다. 기존 v1,
 Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
+
+## 전체 검토에서 보강한 보호 장치
+
+- v1/v2 working JSON의 load 시점 byte hash 비교: revision을 유지한 외부 변경도 저장 거부
+- 백업 복사 중 파일 변경 검사, 실패 시 기존 라벨·백업 보존
+- 저장 후 Undo/Redo의 편집 이력은 유지하고 저장 context를 갱신하여 재저장 revision 충돌 방지
+- 카메라 있는/없는 profile 혼합 재동기화의 후보 분리
+- Ctrl+마우스/휠 시점 조작과 Ctrl 단독 z 이동 분리
+- frame 전환 시 BEV/측면 진행 중 gesture 취소와 로드 중 편집 차단
+- v2 calibration의 실제 유효성·enabled 상태 기록, 세션 중 변경 시 stale projection 해제
+- export의 기존 출력·동시 생성 파일 비덮어쓰기와 source/working/metadata 경로 보호
+- GUI 검사·통계·export의 명시적 v2 profile 선택, worker의 Qt 입력 접근 제거
+- Windows 재생성 대상 `.venv` 한정, `pyvenv.cfg` 없는 폴더 삭제 거부
+- `codex/v2` CI trigger, Windows/Ubuntu × Python 3.10/3.12 matrix와 mypy 개발 lock
 
 ## 기존 1차 구현
 
@@ -118,7 +135,8 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 
 ## 테스트
 
-- 전체 unit/integration/schema 회귀 테스트 272개 통과 (2026-09-13, 이번 커밋 범위)
+- 검토 전 기준: unit/integration/schema 회귀 테스트 272개 (기존 커밋 범위)
+- 현재 로컬 전체/기존 MCAP 작업 제외 결과와 검증 환경은 [최신 검토 기록](35_PROJECT_REVIEW_AND_MAINTENANCE.md#검증)을 참고
 - 전체 `src` mypy와 저장소 전체 Ruff 통과
 - 두 폴더 간 객체 가져오기·저장/재로드·순차 이어받기, 중복 ID/취소/파일 변경/저장 실패 보호 검증
 - 합성 이동·공중 표지판·지면 경사·중복 후보·포인트 누락·취소·추적 오류·Undo·포인트 강조 회귀 검증
@@ -133,4 +151,4 @@ Waymo와 특수 one_chip 입력은 별도 호환 경로로 계속 유지한다.
 1. 공식 Python 3.12가 설치된 clean Windows PC에서 한글/공백 경로 setup/open/edit/save 최종 인증
 2. third-party license 묶음, 앱 아이콘, 버전 정보, 코드 서명
 3. frame reviewed/skipped workflow와 다음 미검토 frame 이동
-4. source-compatible exporter와 GUI export 대화상자
+4. source-compatible exporter와 명시적 전체-frame v1→v2 migrator (GUI 일반 export는 구현됨)

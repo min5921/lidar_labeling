@@ -44,6 +44,7 @@ class SideView(pg.PlotWidget):
         self._first_cloud = True
         self._objects: tuple[LabeledObject, ...] = ()
         self._selected_id: str | None = None
+        self._editing_enabled = True
         self._edit_object: LabeledObject | None = None
         self._edit_mode: EditMode | None = None
         self._edit_start_data: tuple[float, float] | None = None
@@ -123,6 +124,7 @@ class SideView(pg.PlotWidget):
         selected_id: str | None = None,
         line_width: float = 2.0,
     ) -> None:
+        self.cancel_interaction()
         self._clear_items(self._box_items)
         self._objects = tuple(objects)
         self._selected_id = selected_id
@@ -165,7 +167,20 @@ class SideView(pg.PlotWidget):
         self.setXRange(center - horizontal, center + horizontal, padding=0)
         self.setYRange(box.z - vertical, box.z + vertical, padding=0)
 
+    def cancel_interaction(self) -> None:
+        """Discard a gesture that must not outlive its frame/label snapshot."""
+        self._clear_edit_preview()
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def set_editing_enabled(self, enabled: bool) -> None:
+        if self._editing_enabled != enabled:
+            self._editing_enabled = enabled
+            self.cancel_interaction()
+
     def mousePressEvent(self, event: Any) -> None:
+        if not self._editing_enabled:
+            super().mousePressEvent(event)
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             selected = self._selected_object()
             if selected is not None:

@@ -58,6 +58,8 @@ from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.annotation_history import AnnotationHistory
 from lidar_label_tool.services.box_propagation import created_objects, merge_carried_objects
 from lidar_label_tool.services.frame_session import (
+    LabelContextIssue,
+    compare_calibration_context,
     compare_label_context,
     refresh_label_context,
 )
@@ -141,6 +143,7 @@ class MainWindow(QMainWindow):
         self._ignored_recovery_frames: set[str] = set()
         self._warned_context_frames: set[str] = set()
         self.camera_calibrations: dict[str, CameraCalibration] = {}
+        self._projection_disabled_reason: str | None = None
         if isinstance(self.adapter, WaymoFrameCentricAdapter):
             for data in self.adapter.segment.get("camera_calibrations", []):
                 try:
@@ -647,7 +650,20 @@ class MainWindow(QMainWindow):
         elif event_type in {
             QEvent.Type.ApplicationDeactivate,
             QEvent.Type.WindowDeactivate,
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.MouseMove,
+            QEvent.Type.Wheel,
+            QEvent.Type.TabletPress,
+            QEvent.Type.TabletMove,
+            QEvent.Type.TabletRelease,
+            QEvent.Type.TouchBegin,
+            QEvent.Type.TouchUpdate,
+            QEvent.Type.TouchEnd,
         }:
+            # Ctrl modifies 3D pan/FOV and other pointer gestures; those are not
+            # a standalone Ctrl keypress and must never move a label on release.
             self._control_only_pending = False
         return super().eventFilter(watched, event)
 
@@ -665,6 +681,10 @@ class MainWindow(QMainWindow):
     def _request_frame(self, frame_id: str) -> None:
         if not frame_id:
             return
+        # An unfinished gesture belongs to the displayed frame, not the next
+        # frame's object with the same ID. Cancel even if navigation is declined.
+        self.bev_view.cancel_interaction()
+        self.side_view.cancel_interaction()
         if (
             self.payload is not None
             and frame_id != self.payload.source.frame_id
@@ -715,6 +735,7 @@ class MainWindow(QMainWindow):
         if not isinstance(payload, FrameLoadPayload):
             return
         self.payload = payload
+        self._invalidate_camera_projection(payload.context_issues)
         self.history = AnnotationHistory.start(
             payload.label, limit=int(self.config["editing"]["history_limit"])
         )
@@ -807,6 +828,23 @@ class MainWindow(QMainWindow):
             + "\n".join(f"- {issue.message}" for issue in payload.context_issues)
             + "\n\n박스와 camera projection을 다시 확인한 뒤 저장하세요.",
         )
+
+    def _invalidate_camera_projection(self, issues: Iterable[LabelContextIssue]) -> bool:
+        """Discard cached matrices when their session's calibration basis changes."""
+        if self._projection_disabled_reason is not None:
+            return False
+        relevant = [
+            issue for issue in issues
+            if issue.code in {"calibration_runtime_changed", "calibration_fingerprint_unreadable"}
+        ]
+        if not relevant:
+            return False
+        self.camera_calibrations.clear()
+        self._projection_disabled_reason = "보정 파일 변경/확인 실패 · 데이터셋을 다시 여세요"
+        logging.getLogger(__name__).warning(
+            "Disabled cached camera projection: %s", "; ".join(issue.message for issue in relevant),
+        )
+        return True
 
     def _offer_recovery(self, payload: FrameLoadPayload) -> str | None:
         frame_id = payload.source.frame_id
@@ -909,11 +947,14 @@ class MainWindow(QMainWindow):
         if payload.sensor_errors:
             failed_sensors = sorted({name.split(":", 1)[0] for name in payload.sensor_errors})
             lidar_status += f" · Load failed: {', '.join(failed_sensors)}"
-        camera_status = (
-            "camera projection: 사용 가능"
-            if self.camera_calibrations
-            else "camera projection: 없음"
-        )
+        if self._projection_disabled_reason is not None:
+            camera_status = f"camera projection: 비활성 ({self._projection_disabled_reason})"
+        else:
+            camera_status = (
+                "camera projection: 사용 가능"
+                if self.camera_calibrations
+                else "camera projection: 없음"
+            )
         self.calibration_badge.setText(
             f"LiDAR calibration: {lidar_status} · {camera_status}"
         )
@@ -1115,6 +1156,14 @@ class MainWindow(QMainWindow):
     def _render_camera(self, *_: Any) -> None:
         if self.payload is None:
             return
+        label = self._current_label()
+        if label is not None and self.camera_calibrations:
+            # Only hash the small calibration file, never the point cloud on a
+            # render path. Do not reuse stale matrices while staying in a frame.
+            if self._invalidate_camera_projection(
+                compare_calibration_context(label, self.payload.source)
+            ):
+                self._update_calibration_badge(self.payload)
         camera = self.camera_combo.currentText()
         image_path = self.payload.source.image_paths.get(camera)
         if image_path is None:
@@ -1148,6 +1197,8 @@ class MainWindow(QMainWindow):
                 f"실시간 투영: {camera} 카메라 보정값 적용 · "
                 f"{self.index.reference_frame} frame"
             )
+        elif self.live_projection_check.isChecked() and self._projection_disabled_reason is not None:
+            self.projection_status.setText(f"실시간 투영 비활성: {self._projection_disabled_reason}")
         elif self.live_projection_check.isChecked():
             self.projection_status.setText(
                 f"실시간 투영 불가: {camera} camera calibration 없음"
@@ -1311,6 +1362,9 @@ class MainWindow(QMainWindow):
     def _update_editor(self, selected: LabeledObject | None = None) -> None:
         if selected is None:
             selected = self._selected_object()
+        ready = self._current_label() is not None and self.frame_combo.isEnabled()
+        self.bev_view.set_editing_enabled(ready)
+        self.side_view.set_editing_enabled(ready)
         enabled = selected is not None and self.frame_combo.isEnabled()
         self.create_button.setEnabled(self.frame_combo.isEnabled())
         self.object_list.setEnabled(self.frame_combo.isEnabled())
@@ -1808,6 +1862,9 @@ class MainWindow(QMainWindow):
         label_to_save = self.history.current
         if self.payload is not None:
             context_issues = compare_label_context(label_to_save, self.payload.source)
+            if self._invalidate_camera_projection(context_issues):
+                self._render_camera()
+                self._update_calibration_badge(self.payload)
             if context_issues:
                 answer = QMessageBox.question(
                     self,

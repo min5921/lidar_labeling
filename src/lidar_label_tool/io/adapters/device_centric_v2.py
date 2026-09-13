@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from math import isfinite
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 
@@ -18,6 +19,7 @@ from lidar_label_tool.domain.label_identity_v2 import (
     profile_identity_sha256,
 )
 from lidar_label_tool.domain.point_cloud import PointCloudData, PointCloudSpec
+from lidar_label_tool.calibration.waymo_camera import CameraCalibration
 from lidar_label_tool.io.dataset import DatasetIndex, SourceFrameData
 from lidar_label_tool.io.dataset_v2 import (
     load_dataset_manifest_v2,
@@ -47,6 +49,7 @@ class DeviceCentricV2Adapter:
         self._records: dict[str, FrameIndexRecordV2] = {}
         self._index: DatasetIndex | None = None
         self._camera_calibrations: dict[str, Any] = {}
+        self._loaded_calibration_state: dict[str, Any] = {}
         self._bin_loader = BinaryPointCloudLoader()
         self._pcd_loader = PcdPointCloudLoader()
 
@@ -225,6 +228,7 @@ class DeviceCentricV2Adapter:
                 if self.profile.camera is not None
                 else None
             ),
+            "calibration_sha256": self._loaded_calibration_state.get("fingerprint"),
         }
         return SourceFrameData(
             dataset_root=self.data_root,
@@ -267,32 +271,59 @@ class DeviceCentricV2Adapter:
         )
 
     def _load_calibration(self) -> None:
-        self._camera_calibrations = {}
-        profile = self.profile
-        if profile.camera is None or profile.camera.mode != "calibrated":
-            return
-        assert profile.camera.calibration_path is not None
+        state, calibrations = self._read_calibration()
+        self._loaded_calibration_state = state
+        self._camera_calibrations = calibrations
+
+    def current_calibration_state(self) -> dict[str, Any]:
+        """Describe validated current files without changing the loaded projection cache."""
+        state, _ = self._read_calibration()
+        return state
+
+    def _read_calibration(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        camera = self.profile.camera
+        mode = camera.mode if camera is not None else "none"
+        state: dict[str, Any] = {
+            "requested_mode": mode,
+            "effective_mode": "none" if camera is None else "display_only",
+            "path": camera.calibration_path if camera is not None else None,
+            "fingerprint": None,
+            "status": "not_configured",
+        }
+        if camera is None or mode != "calibrated":
+            return state, {}
+        state["status"] = "invalid"
+        assert camera.calibration_path is not None
         try:
-            path = _safe_config_path(
-                self.configuration_root,
-                profile.camera.calibration_path,
-            )
-            if _sha256(path) != profile.camera.calibration_sha256:
-                return
-            with path.open("r", encoding="utf-8") as stream:
-                document = json.load(stream)
+            path = _safe_path(self.configuration_root, camera.calibration_path)
+            if not path.is_file():
+                state["status"] = "missing"
+                return state, {}
+            payload = path.read_bytes()
+            state["fingerprint"] = hashlib.sha256(payload).hexdigest()
+            if state["fingerprint"] != camera.calibration_sha256:
+                return state, {}
+            document = json.loads(payload.decode("utf-8"))
             validate_json_document(document, "calibration.schema.json")
-        except (OSError, ValueError, json.JSONDecodeError):
-            return
-        if not isinstance(document, Mapping):
-            return
-        if document.get("reference_frame") != self.active_lidar.coordinate_frame:
-            return
-        cameras = document.get("cameras", {})
-        if isinstance(cameras, Mapping):
-            value = cameras.get(profile.camera.camera_id)
-            if isinstance(value, Mapping):
-                self._camera_calibrations[profile.camera.camera_id] = dict(value)
+            if not isinstance(document, Mapping):
+                return state, {}
+            if document.get("reference_frame") != self.active_lidar.coordinate_frame:
+                return state, {}
+            cameras = document.get("cameras", {})
+            value = cameras.get(camera.camera_id) if isinstance(cameras, Mapping) else None
+            if not isinstance(value, Mapping):
+                return state, {}
+            if value.get("enabled") is False:
+                state["status"] = "disabled"
+                return state, {}
+            calibration = CameraCalibration.from_generic(camera.camera_id, value)
+            if not all(isfinite(value) for value in calibration.intrinsic):
+                return state, {}
+        except (OSError, ValueError, KeyError, TypeError):
+            return state, {}
+        state["effective_mode"] = "calibrated"
+        state["status"] = "valid"
+        return state, {camera.camera_id: dict(value)}
 
 
 def _resolve_data_root(config_root: Path, manifest: DatasetManifestV2) -> Path:

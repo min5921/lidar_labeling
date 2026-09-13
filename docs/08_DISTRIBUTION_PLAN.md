@@ -11,7 +11,7 @@ Python 미설치 단일 실행 파일보다 source commit과 고정 dependency�
 - Windows 10/11 x64
 - Ubuntu 22.04 이상 x86_64
 - Python 3.10 이상 64-bit; 새 Windows PC 권장 기준은 python.org 공식 Python 3.12 x64
-- 기본 운영 경로는 프로젝트별 `.venv`; Conda는 수동 고급 대안
+- 기본 운영 경로는 프로젝트별 `.venv`; Windows launcher는 Conda 기반 `.venv`를 지원하지 않음
 - `requirements-lock.txt`로 고정한 runtime package
 
 OS별 setup script는 가상환경 생성, package 설치, editable project 설치, 기본 설정 검증까지
@@ -44,11 +44,15 @@ Windows와 Linux CI에서 다음을 반복한다.
 2. runtime/development lock 설치
 3. project editable 설치
 4. source 환경 검증
-5. Ruff 실행
+5. Ruff와 전체 `src` mypy 실행
 6. 전체 pytest 실행
 
 실험실 PC에서는 `scripts/verify_source_environment.py`로 Python, package 버전, project import와
 기본 설정을 확인한다.
+
+CI 설정은 `codex/v2` push와 PR에서 Windows/Ubuntu × Python 3.10/3.12를 검사한다.
+로컬 테스트 통과와 GitHub runner의 실제 실행 통과는 별개이며, 새 clean PC의 GPU/OpenGL
+수동 검증도 대체하지 않는다.
 
 ## Linux 시스템 라이브러리
 

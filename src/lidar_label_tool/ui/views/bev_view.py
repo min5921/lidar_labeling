@@ -67,6 +67,7 @@ class BevView(pg.PlotWidget):
         self._objects: tuple[LabeledObject, ...] = ()
         self._selected_id: str | None = None
         self.create_mode = False
+        self._editing_enabled = True
         self._drag_start_data: tuple[float, float] | None = None
         self._drag_start_pixel: tuple[float, float] | None = None
         self._create_preview: Any | None = None
@@ -142,6 +143,7 @@ class BevView(pg.PlotWidget):
         line_width: float = 2.0,
         show_labels: bool = True,
     ) -> None:
+        self.cancel_interaction()
         self._clear_items(self._box_items)
         self._objects = tuple(objects)
         self._selected_id = selected_id
@@ -214,7 +216,25 @@ class BevView(pg.PlotWidget):
         if not enabled:
             self._clear_create_preview()
 
+    def cancel_interaction(self) -> None:
+        """Discard previews/snapshots before replacing a frame or its labels."""
+        self._clear_move_preview()
+        self._clear_create_preview()
+        self.setCursor(
+            Qt.CursorShape.CrossCursor
+            if self.create_mode and self._editing_enabled
+            else Qt.CursorShape.ArrowCursor
+        )
+
+    def set_editing_enabled(self, enabled: bool) -> None:
+        if self._editing_enabled != enabled:
+            self._editing_enabled = enabled
+            self.cancel_interaction()
+
     def mousePressEvent(self, event: Any) -> None:
+        if not self._editing_enabled:
+            super().mousePressEvent(event)
+            return
         if self.create_mode and event.button() == Qt.MouseButton.LeftButton:
             point = self._event_data_point(event)
             self._drag_start_data = (float(point.x()), float(point.y()))
@@ -476,7 +496,7 @@ class BevView(pg.PlotWidget):
         )
 
     def _mouse_clicked(self, event: Any) -> None:
-        if event.button() != Qt.MouseButton.LeftButton:
+        if not self._editing_enabled or event.button() != Qt.MouseButton.LeftButton:
             return
         point = self.getViewBox().mapSceneToView(event.scenePos())
         x, y = float(point.x()), float(point.y())

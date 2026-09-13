@@ -20,6 +20,46 @@ from tests.fixture_builders import create_v2_dataset
 
 
 class V2LabelRepositoryTests(unittest.TestCase):
+    def test_same_revision_external_edit_is_not_overwritten_until_reload(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_v2_dataset(root)
+            adapter = DeviceCentricV2Adapter(root)
+            repository = V2LabelRepository.for_sidecar(adapter)
+            repository.save(_new_label(adapter))
+            stale = repository.load("000000")
+            target = repository.path_for("000000")
+            document = json.loads(target.read_text(encoding="utf-8"))
+            document["external_note"] = "외부 작업 보존"
+            target.write_text(json.dumps(document), encoding="utf-8")
+            changed_bytes = target.read_bytes()
+
+            for _ in range(2):
+                with self.assertRaises(LabelConflictError):
+                    repository.save(stale)
+                self.assertEqual(target.read_bytes(), changed_bytes)
+                self.assertFalse(target.with_suffix(".json.bak").exists())
+
+            current = repository.load("000000")
+            saved = repository.save(current)
+            self.assertEqual(saved.revision, 2)
+            self.assertEqual(saved.extra_fields["external_note"], "외부 작업 보존")
+            self.assertEqual(target.with_suffix(".json.bak").read_bytes(), changed_bytes)
+
+    def test_successful_save_establishes_next_save_fingerprint(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            create_v2_dataset(root)
+            adapter = DeviceCentricV2Adapter(root)
+            repository = V2LabelRepository.for_sidecar(adapter)
+            saved = repository.save(_new_label(adapter))
+            target = repository.path_for("000000")
+            document = json.loads(target.read_text(encoding="utf-8"))
+            document["external_note"] = "keep"
+            target.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaises(LabelConflictError):
+                repository.save(saved)
+
     def test_saves_and_loads_profile_scoped_v2_label(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory) / "한글 데이터"

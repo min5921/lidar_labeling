@@ -624,6 +624,9 @@ manifest validator와 preflight가 반드시 검사한다.
 
 ## 16. v1 호환과 migration
 
+아래 전체-frame migration은 구현 시 지켜야 할 계약이며, 현재 전용 migrator/실행 메뉴가
+완성되었다는 뜻은 아니다. 현재 제공하는 §12의 객체 단위 가져오기와 구분한다.
+
 - 기존 `dataset.json` 1.0과 `label.schema.json` 1.0은 계속 읽는다.
 - 파일 내용을 domain model로 읽기 전에 `schema_version`으로 parser와 repository를 dispatch한다.
 - v2 repository는 exact profile/LiDAR namespace의 v2 label만 읽고 쓴다. 손상된 v2 파일이 있으면

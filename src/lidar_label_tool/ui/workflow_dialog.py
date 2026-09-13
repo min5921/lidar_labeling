@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -33,6 +34,7 @@ from lidar_label_tool import __version__
 from lidar_label_tool.app.config import load_config
 from lidar_label_tool.app.runtime_paths import user_settings_path
 from lidar_label_tool.services.dataset_preflight import PreflightReport, validate_dataset
+from lidar_label_tool.services.dataset_profiles import list_dataset_profiles
 from lidar_label_tool.services.label_export import export_dataset_labels
 from lidar_label_tool.services.label_statistics import collect_label_statistics
 from lidar_label_tool.services.one_chip_conversion import (
@@ -168,6 +170,25 @@ def _run_task(
         message.exec()
         return None
     return cast(_TaskResult, dialog.result_value)
+
+
+def _choose_task_profile(parent: QWidget, dataset: Path) -> tuple[bool, str | None]:
+    profiles = _run_task(parent, "LiDAR profile 확인", lambda: list_dataset_profiles(dataset))
+    if profiles is None:
+        return False, None
+    if not profiles:
+        return True, None
+    if len(profiles) == 1:
+        return True, profiles[0].id
+    choices = [
+        f"{item.display_name} ({item.id} / LiDAR: {item.lidar_id})" for item in profiles
+    ]
+    selected, accepted = QInputDialog.getItem(
+        parent, "LiDAR profile 선택", "이번 작업의 대상 profile을 선택하세요.", choices, 0, False
+    )
+    if not accepted:
+        return False, None
+    return True, profiles[choices.index(selected)].id
 
 
 class _PathRow(QWidget):
@@ -510,6 +531,7 @@ class LabelExportDialog(QDialog):
         form.addRow("Frame ID", self.frames)
         form.addRow("출력", self.output_row)
         layout.addLayout(form)
+        layout.addWidget(QLabel("기존 파일은 덮어쓰지 않습니다. 별도의 새 출력 폴더를 선택하세요."))
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
@@ -544,16 +566,21 @@ class LabelExportDialog(QDialog):
         workspace_text = self.workspace_row.edit.text().strip()
         frame_ids = tuple(item.strip() for item in self.frames.text().split(",") if item.strip())
         config = load_config(self.config_path)
+        accepted, profile_id = _choose_task_profile(self, dataset)
+        if not accepted:
+            return
+        export_format = self.format_combo.currentText()
         result = _run_task(
             self,
             "라벨 내보내기",
             lambda: export_dataset_labels(
                 dataset,
                 config=config,
-                export_format=self.format_combo.currentText(),
+                export_format=export_format,
                 output=output,
                 frame_ids=frame_ids or None,
                 workspace_root=Path(workspace_text) if workspace_text else None,
+                profile_id=profile_id,
             ),
         )
         if result is None:
@@ -561,6 +588,7 @@ class LabelExportDialog(QDialog):
         QMessageBox.information(
             self,
             "Export 완료",
+            f"Profile: {profile_id or 'v1 / legacy'}\n"
             f"{result.frame_count}개 프레임\n{result.output}",
         )
         self.accept()
@@ -791,6 +819,9 @@ class WorkflowDialog(QDialog):
         dataset = self._choose_dataset("검사할 데이터셋 선택")
         if dataset is None:
             return
+        accepted, profile_id = _choose_task_profile(self, dataset)
+        if not accepted:
+            return
         config = load_config(self.config_path)
         report = _run_task(
             self,
@@ -799,6 +830,7 @@ class WorkflowDialog(QDialog):
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 verify_images=True,
+                profile_id=profile_id,
             ),
         )
         if report is None:
@@ -813,7 +845,10 @@ class WorkflowDialog(QDialog):
             if report.error_count or report.warning_count
             else QMessageBox.Icon.Information
         )
-        message = QMessageBox(icon, "데이터셋 검사", report.short_summary_ko(), parent=self)
+        message = QMessageBox(
+            icon, "데이터셋 검사",
+            f"Profile: {profile_id or 'v1 / legacy'}\n{report.short_summary_ko()}", parent=self
+        )
         message.setDetailedText(details or "문제 없음")
         message.exec()
 
@@ -824,6 +859,9 @@ class WorkflowDialog(QDialog):
         dataset = self._choose_dataset("통계를 확인할 데이터셋 선택")
         if dataset is None:
             return
+        accepted, profile_id = _choose_task_profile(self, dataset)
+        if not accepted:
+            return
         config = load_config(self.config_path)
         source = _run_task(
             self,
@@ -832,6 +870,7 @@ class WorkflowDialog(QDialog):
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 working=False,
+                profile_id=profile_id,
             ),
         )
         if source is None:
@@ -843,6 +882,7 @@ class WorkflowDialog(QDialog):
                 dataset,
                 class_mapping=config["source_class_mappings"],
                 working=True,
+                profile_id=profile_id,
             ),
         )
         if working is None:
@@ -850,7 +890,7 @@ class WorkflowDialog(QDialog):
         message = QMessageBox(
             QMessageBox.Icon.Information,
             "라벨 통계",
-            f"프레임 {source.frame_count}개\n"
+            f"Profile: {profile_id or 'v1 / legacy'}\n프레임 {source.frame_count}개\n"
             f"Source 객체 {source.object_count}개\n"
             f"Working 객체 {working.object_count}개\n"
             f"Reviewed {dict(working.status_counts).get('reviewed', 0)}개",

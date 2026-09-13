@@ -5,6 +5,7 @@ import re
 from typing import Iterable
 
 from lidar_label_tool.domain.labels import FrameLabel
+from lidar_label_tool.exporters.atomic_output import require_new_export_path
 from lidar_label_tool.exporters.base import LabelExporter
 
 
@@ -38,12 +39,13 @@ def export_frames(
     exported: list[Path] = []
     seen: set[str] = set()
     for label in labels:
-        if label.frame_id in seen:
+        if label.frame_id.casefold() in seen:
             raise ValueError(f"duplicate frame_id in export: {label.frame_id}")
         if not _SAFE_FRAME_ID.fullmatch(label.frame_id) or label.frame_id in {".", ".."}:
             raise ValueError(f"unsafe frame_id in export: {label.frame_id}")
-        seen.add(label.frame_id)
+        seen.add(label.frame_id.casefold())
         exporter.validate(label)
+        require_new_export_path(output_root / f"{label.frame_id}{exporter.extension}")
     for label in labels:
         target = output_root / f"{label.frame_id}{exporter.extension}"
         try:

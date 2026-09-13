@@ -338,6 +338,8 @@ Linux:
 - 임시 파일 검증과 atomic replace를 사용하고 직전 `.bak`을 유지합니다.
 - camera 또는 calibration 문제는 projection만 비활성화하며 LiDAR 라벨 저장은 계속할 수 있습니다.
 - export는 일반 저장과 분리되어 있으며 첫 화면의 `라벨 내보내기`에서 명시적으로 실행합니다.
+- GUI 검사·통계·내보내기는 대상 v2 LiDAR profile을 선택합니다. Export는 원본/작업 라벨과
+  분리된 새 출력 경로를 사용하고 기존 파일을 덮어쓰지 않습니다.
 
 상세 조작법은 [GUI 사용자 매뉴얼](docs/USER_MANUAL.md)을 확인하세요.
 
@@ -398,11 +400,15 @@ lidar_labeling/
 ├─ schemas/         # dataset/label/calibration JSON Schema
 ├─ configs/         # 기본 프로그램 설정
 ├─ scripts/         # 변환·검증·개발 보조 스크립트
+├─ packaging/       # one_chip 레거시 BAT 예시 (일반 실행 경로 아님)
 ├─ tests/           # 단위·통합 테스트
 └─ docs/            # 계약, 설치, 사용 및 검수 문서
 ```
 
 `.venv`, 원본 데이터, 생성된 dataset, 작업 라벨과 export 결과는 Git에 포함하지 않습니다.
+실행은 [launchers 안내](launchers/README.md), 개발 도구는 [scripts 안내](scripts/README.md),
+현재 정리 기준·검토 결과·남은 위험은 [프로젝트 검토](docs/35_PROJECT_REVIEW_AND_MAINTENANCE.md)에서
+확인할 수 있습니다. 로컬 데이터나 이전 산출물은 필요 여부를 확인하지 않고 자동 삭제하지 않습니다.
 
 ## 상세 문서
 

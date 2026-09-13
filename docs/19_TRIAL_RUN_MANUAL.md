@@ -494,7 +494,8 @@ UI가 불편한 경우는 버그가 아니어도 적어 준다.
 
 - 객체 box의 pitch/roll 저장·편집은 아직 정식 지원하지 않는다.
 - GUI에서 class catalog를 새로 만들거나 rename하는 기능은 아직 없다.
-- GUI export 대화상자는 아직 없고 CLI export를 사용한다.
+- GUI 첫 화면에서 `라벨 내보내기`를 지원한다. 여러 v2 profile은 선택 후 내보내며 기존 출력
+  파일은 덮어쓰지 않는다. 새 출력 폴더를 사용한다.
 - source-compatible export는 아직 없다.
 - camera projection은 calibration geometry 확인용이며 rolling shutter, sensor timestamp 차이, motion compensation은 아직 반영하지 않는다.
 - 실험실 PC마다 Python 3.10+ 가상환경 설치가 필요하다.

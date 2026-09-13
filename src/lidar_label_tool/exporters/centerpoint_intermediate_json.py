@@ -7,6 +7,7 @@ from typing import Collection
 from uuid import uuid4
 
 from lidar_label_tool.domain.labels import FrameLabel
+from lidar_label_tool.exporters.atomic_output import publish_new_export, require_new_export_path
 from lidar_label_tool.exporters.validation import validate_label_for_export
 
 
@@ -68,6 +69,7 @@ class CenterPointIntermediateJsonExporter:
             ],
         }
         target = Path(output_path)
+        require_new_export_path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
         try:
@@ -76,7 +78,7 @@ class CenterPointIntermediateJsonExporter:
                 stream.write("\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, target)
+            publish_new_export(temporary, target)
         finally:
             try:
                 temporary.unlink()
