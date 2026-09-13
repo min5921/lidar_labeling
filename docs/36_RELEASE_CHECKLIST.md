@@ -81,7 +81,10 @@ manifest는 완료로 보지 않는다. 내용을 확인한 후 다른 새 경�
 대체하지 않는다. 결과 기록에는 commit, OS/build, Python, GPU/driver, dataset/profile,
 수행 날짜와 관찰 결과를 남긴다.
 
-- [ ] 같은 commit의 GitHub Windows/Ubuntu × Python 3.10/3.12 네 job 통과 링크 기록
+- [x] 기능 commit `2b0365c`의 GitHub Windows/Ubuntu × Python 3.10/3.12
+  [네 job 통과](https://github.com/min5921/lidar_labeling/actions/runs/34730643435).
+  로컬 새 한글·공백 경로 venv 486 passed, 2 skipped; 실제 Windows/OpenGL interaction smoke OK.
+  CI skip 이유와 실제 표본 QA 한계는 [검증 기록](35_PROJECT_REVIEW_AND_MAINTENANCE.md#후속-검증-환경)을 따른다.
 - [ ] 새 Windows PC에서 공식 Python x64 → setup → Qt DLL 검사 → 실제 OpenGL 표시
 - [ ] 대상 Linux desktop에서 설치·GUI 표시와 GPU 상호작용 확인
 - [ ] 한글·공백 경로의 BIN/PCD+이미지 폴더 구성, profile 선택, 열기

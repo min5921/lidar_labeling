@@ -105,6 +105,14 @@ P1/P2는 이번 코드 검토의 수정 우선순위다. 과거 설계 문서의
   이는 같은 PC의 새 환경이지 다른 Windows PC 인증은 아니다.
 - 새 환경 전체 회귀 480 passed, 2 skipped, 10 subtests 및 `pip check` 통과(최종 경로/lock
   보강 직전 checkpoint). Windows symlink 권한 skip은 Linux CI에서 별도 실행한다.
+- 기능 커밋 `2b0365c`를 새 환경에서 재검증: **486 passed, 2 skipped, 10 subtests**.
+  전체 src 108개 파일 Windows/Linux target mypy, Ruff, whitespace 검사 통과.
+- [기능 커밋 GitHub CI](https://github.com/min5921/lidar_labeling/actions/runs/34730643435): 네 job 모두 성공.
+  Windows 2022 Python 3.10/3.12 각각 481 passed, 7 skipped;
+  Ubuntu 22.04 Python 3.10/3.12 각각 473 passed, 15 skipped.
+  공통 7 skip은 Git에 포함하지 않은 실제 Waymo 샘플 부재, Linux의 추가 8 skip은 Windows 전용
+  setup 테스트다. 로컬에서는 해당 Waymo 7개가 실행됐고, CI Windows에서는 setup 8개가 실행됐다.
+- Markdown 36개 문서 로컬 파일 링크 누락 0개. heading anchor까지 자동 검증한 결과는 아니다.
 - `scripts/interaction_smoke.py`를 실제 `QT_QPA_PLATFORM=windows`로 실행하여 `interaction smoke: OK`.
   Waymo `frame_000`에서 편집·Undo/Redo·3D picking·다음 프레임 이어받기 등을 임시 외부 workspace에서
   확인했다. 원본 작업 라벨을 저장 대상으로 사용하지 않았다. 새 PC/GPU 인증으로 확대 해석하지 않는다.
