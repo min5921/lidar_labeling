@@ -7,6 +7,7 @@ import numpy as np
 
 from lidar_label_tool.domain.labels import Box3D
 from lidar_label_tool.domain.point_cloud import PointCloudData
+from lidar_label_tool.geometry.point_selection import points_in_box
 
 
 def estimate_floor_z_from_footprint(
@@ -83,3 +84,62 @@ def fit_box_bottom_to_points(
     if floor_z is None:
         return None
     return replace(box, z=floor_z + box.height / 2.0)
+
+
+def fit_box_to_local_ground(
+    box: Box3D, clouds: Iterable[PointCloudData], *, max_z_step_m: float = 0.6,
+) -> Box3D | None:
+    """Fit z only to a supported local ground plane; never infer ground contact.
+
+    Explicit opt-in for ground-contact objects. Reads [N,3] float32/64 points in
+    the box's reference frame (meter, x forward/y left/z up). Size/yaw stay fixed.
+    Sparse, steep, poorly supported or distant planes return None, not a guess.
+    """
+    if not np.isfinite(max_z_step_m) or max_z_step_m <= 0:
+        raise ValueError("max_z_step_m must be positive and finite")
+    bottom = box.z - box.height / 2
+    search = replace(box, z=bottom, height=2 * max_z_step_m, length=box.length + 1.5, width=box.width + 1.5)
+    parts = [cloud.xyz[points_in_box(cloud.xyz, search)] for cloud in clouds]
+    if not parts or sum(len(part) for part in parts) < 18:
+        return None
+    points = np.concatenate(parts).astype(np.float64)
+    points -= np.array([box.x, box.y, bottom])
+    # One low observation per XY cell limits dense vertical surfaces and runtime.
+    keys = np.floor(points[:, :2] / 0.35).astype(np.int64)
+    order = np.argsort(points[:, 2], kind="stable")
+    _, indices = np.unique(keys[order], axis=0, return_index=True)
+    points = points[order[indices]]
+    if len(points) > 400:
+        points = points[np.linspace(0, len(points) - 1, 400, dtype=int)]
+    if len(points) < 12:
+        return None
+    design = np.column_stack((points[:, :2], np.ones(len(points))))
+    best: np.ndarray = np.zeros(len(points), dtype=bool)
+    generator = np.random.default_rng(0)
+    for _ in range(64):
+        indices = generator.choice(len(points), size=3, replace=False)
+        matrix = design[indices]
+        if abs(np.linalg.det(matrix)) < 0.05:
+            continue
+        plane = np.linalg.solve(matrix, points[indices, 2])
+        if np.linalg.norm(plane[:2]) > 0.35:
+            continue
+        inliers = np.abs(design @ plane - points[:, 2]) <= 0.08
+        if np.count_nonzero(inliers) > np.count_nonzero(best):
+            best = inliers
+    if np.count_nonzero(best) < max(12, len(points) * 0.5):
+        return None
+    support = points[best, :2]
+    if np.min(np.ptp(support, axis=0)) < 0.5:
+        return None
+    cosine, sine = np.cos(box.yaw), np.sin(box.yaw)
+    outside = (
+        (np.abs(cosine * support[:, 0] + sine * support[:, 1]) > box.length / 2 + 0.1)
+        | (np.abs(-sine * support[:, 0] + cosine * support[:, 1]) > box.width / 2 + 0.1)
+    )
+    if np.count_nonzero(outside) < 6:
+        return None  # A flat surface on the object itself is not evidence of ground.
+    plane, _, rank, _ = np.linalg.lstsq(design[best], points[best, 2], rcond=None)
+    if rank < 3 or np.linalg.norm(plane[:2]) > 0.35 or abs(plane[2]) > max_z_step_m:
+        return None
+    return replace(box, z=box.z + float(plane[2]))

@@ -103,6 +103,9 @@
         "resize_step_m": { "type": "number", "exclusiveMinimum": 0 },
         "yaw_step_deg": { "type": "number", "exclusiveMinimum": 0 },
         "carry_created_boxes_forward": { "type": "boolean" },
+        "track_selected_forward": { "type": "boolean" },
+        "tracking_adjust_z": { "type": "boolean" },
+        "tracking_max_distance_m": { "type": "number", "minimum": 0.5, "maximum": 10.0 },
         "autosave_on_frame_change": { "type": "boolean" },
         "recovery_interval_s": { "type": "integer", "minimum": 5 },
         "history_limit": { "type": "integer", "minimum": 1 }
@@ -160,6 +163,7 @@
         "preserve_view_across_frames": { "type": "boolean" },
         "auto_focus_selection": { "type": "boolean" },
         "show_object_labels": { "type": "boolean" },
+        "highlight_selected_points": { "type": "boolean" },
         "show_source_camera_labels": { "type": "boolean" },
         "show_projected_lidar_labels": { "type": "boolean" },
         "show_live_projection": { "type": "boolean" },

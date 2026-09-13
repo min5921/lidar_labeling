@@ -477,6 +477,19 @@ point/image binding, provenance, calibration context와 revision은 유지한다
 전체 추가는 하나의 Undo이며 저장은 대상 repository만 수행한다. 이 이력이 있는 객체는 명시적
 이어받기 대상으로 취급한다. 원본 JSON에 기록된 데이터 경로를 따라가거나 source 파일을 쓰지 않는다.
 
+선택 객체의 1-step 추적 보조(D42~D43)는 동일 profile의 순차 다음 frame에서 **새로 이어받은**
+객체의 x/y/z만 편집한다. 사용자의 opt-in이 필요하며 기존 대상 객체 ID와 복구 라벨은 보존한다.
+length/width/height/yaw와 class/source/unknown field, frame identity·binding·revision은 바꾸지 않는다.
+z는 기본적으로 객체 포인트의 상대 이동량이고 지면 접촉을 암묵적으로 가정하지 않는다.
+지면 보정은 실행 중 객체 ID별 별도 opt-in이며 지면 근거 부족 시 이전 z를 유지한다.
+
+적용 근거는 선택적 object 배열 `tracking_history`에 `method: "local_point_translation"`,
+`source_frame_id`, `target_frame_id`, `delta_xyz`, `score`, `adjust_z`, `ground_contact`,
+`ground_applied`, `applied_at_utc`로 기록한다. 이 method의 기록은 현재 frame의 마지막 적용 한 건만
+유지하고 이전 frame의 기록은 그 frame 라벨에 남긴다. 다른 method의 이력과 알 수 없는 metadata는
+보존한다. 배열이 아닌 기존 이력은 덮어쓰지 않는다. 추적 성공은 reviewed를 의미하지 않으며
+사용자가 확인·수정한 뒤 일반 원자 저장을 사용한다.
+
 라벨 provenance에는 다음 fingerprint를 기록한다.
 
 - dataset manifest SHA-256

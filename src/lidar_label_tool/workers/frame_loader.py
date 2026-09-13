@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from typing import Any, Mapping
 
 from lidar_label_tool.domain.labels import FrameLabel
@@ -10,6 +11,7 @@ from lidar_label_tool.io.labels.repository_factory import WorkingLabelRepository
 from lidar_label_tool.io.labels.waymo_importer import WaymoLabelImporter
 from lidar_label_tool.services.frame_session import FrameSessionService
 from lidar_label_tool.services.frame_session import LabelContextIssue
+from lidar_label_tool.services.object_tracking import TrackingRequest, TrackingResult, track_object
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +24,7 @@ class FrameLoadPayload:
     sensor_errors: Mapping[str, str] = field(default_factory=dict)
     reference_layer_errors: Mapping[str, str] = field(default_factory=dict)
     context_issues: tuple[LabelContextIssue, ...] = ()
+    tracking_result: TrackingResult | None = None
 
 
 def _error_text(exc: Exception) -> str:
@@ -33,6 +36,7 @@ def load_frame_payload(
     importer: WaymoLabelImporter,
     frame_id: str,
     repository: WorkingLabelRepository | None = None,
+    tracking_request: TrackingRequest | None = None,
 ) -> FrameLoadPayload:
     opened = FrameSessionService(adapter, importer, repository).open_frame(frame_id)
     clouds: dict[str, tuple[PointCloudData, ...]] = {}
@@ -82,6 +86,19 @@ def load_frame_payload(
             f"{failures}"
         )
 
+    tracking_result = None
+    if tracking_request is not None:
+        try:
+            tracking_result = track_object(
+                tracking_request, opened.label,
+                (cloud for sensor_clouds in clouds.values() for cloud in sensor_clouds),
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("Optional object tracking failed: %s", frame_id)
+            tracking_result = TrackingResult(
+                tracking_request.obj.id, tracking_request.source_frame_id, frame_id,
+                tracking_request.obj.box3d, "failed", "추적 계산 실패 — 기존 위치 유지",
+            )
     return FrameLoadPayload(
         source=opened.source,
         label=opened.label,
@@ -91,4 +108,5 @@ def load_frame_payload(
         sensor_errors=sensor_errors,
         reference_layer_errors=reference_layer_errors,
         context_issues=opened.context_issues,
+        tracking_result=tracking_result,
     )

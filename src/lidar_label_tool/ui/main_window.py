@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import replace
 import logging
 import math
@@ -68,6 +69,9 @@ from lidar_label_tool.services.object_linking import (
     remember_object,
 )
 from lidar_label_tool.services.object_transfer import apply_object_transfer
+from lidar_label_tool.services.object_tracking import (
+    TrackingOptions, TrackingRequest, apply_tracking_result,
+)
 from lidar_label_tool.services.recovery_factory import open_recovery_store
 from lidar_label_tool.services.session_lock import SessionLock
 from lidar_label_tool.services.session_lock_v2 import V2SessionLock
@@ -165,6 +169,8 @@ class MainWindow(QMainWindow):
         self._pending_carry_target: str | None = None
         self._pending_carried_objects: tuple[LabeledObject, ...] = ()
         self._pending_carried_selection: str | None = None
+        self._pending_tracking: TrackingRequest | None = None
+        self._ground_tracking_ids: set[str] = set()
         self._detail_reset_requested = False
         self._suppress_auto_focus = False
         self._object_link_reference: ObjectLinkReference | None = None
@@ -277,11 +283,38 @@ class MainWindow(QMainWindow):
         buttons.addWidget(previous)
         buttons.addWidget(following)
         nav_layout.addLayout(buttons)
-        self.carry_forward_check = QCheckBox("만든/가져온 박스 다음 프레임으로 이어가기")
+        self.carry_forward_check = QCheckBox("만든/가져온 박스\n다음 프레임으로 이어가기")
         self.carry_forward_check.setChecked(
             bool(self.config["editing"].get("carry_created_boxes_forward", True))
         )
         nav_layout.addWidget(self.carry_forward_check)
+        self.tracking_check = QCheckBox("선택 객체 다음 프레임\n자동 추적 (시험 기능)")
+        self.tracking_check.setChecked(bool(self.config["editing"].get("track_selected_forward", False)))
+        self.tracking_check.setToolTip(
+            "바로 다음 프레임으로 이동할 때 선택 객체만 추적합니다. 기존 라벨·불확실한 후보는 이동하지 않습니다. "
+            "Ctrl+Z 한 번으로 자동 이동을 취소할 수 있습니다."
+        )
+        nav_layout.addWidget(self.tracking_check)
+        self.tracking_z_check = QCheckBox("추적 시 상하 위치(z)도 조정\n· 크기 유지")
+        self.tracking_z_check.setChecked(bool(self.config["editing"].get("tracking_adjust_z", True)))
+        nav_layout.addWidget(self.tracking_z_check)
+        self.ground_tracking_check = QCheckBox("선택 객체: 지면 높이로 z 보정")
+        self.ground_tracking_check.setToolTip(
+            "차량·사람 등 지면에 붙은 객체만 켜세요. 표지판은 끄고 포인트 이동량으로 추적합니다. "
+            "이 설정은 현재 실행에서 객체 ID별로 기억하며 다음 프레임 추적에 적용됩니다. "
+            "지면이 불확실하면 기존 z를 유지합니다."
+        )
+        nav_layout.addWidget(self.ground_tracking_check)
+        tracking_form = QFormLayout()
+        self.tracking_distance_spin = self._step_spin(
+            float(self.config["editing"].get("tracking_max_distance_m", 4.0)), 0.5, 10.0, 0.5, " m",
+        )
+        tracking_form.addRow("추적 최대 이동", self.tracking_distance_spin)
+        nav_layout.addLayout(tracking_form)
+        self.tracking_check.toggled.connect(self._update_tracking_controls)
+        self.tracking_z_check.toggled.connect(self._update_tracking_controls)
+        self.carry_forward_check.toggled.connect(self._update_tracking_controls)
+        self.ground_tracking_check.toggled.connect(self._set_ground_tracking)
         self.import_objects_button = QPushButton("이전 폴더의 객체 가져오기…")
         self.import_objects_button.setToolTip(
             "다음 폴더의 첫 프레임에서 이전 폴더의 마지막 작업 라벨 JSON을 선택하세요. "
@@ -370,6 +403,10 @@ class MainWindow(QMainWindow):
         )
         self.object_labels_check.toggled.connect(self._change_box_display)
         point_layout.addRow(self.object_labels_check)
+        self.highlight_points_check = QCheckBox("선택 박스 안 포인트 노란색 강조")
+        self.highlight_points_check.setChecked(bool(self.config["views"].get("highlight_selected_points", True)))
+        self.highlight_points_check.toggled.connect(self._change_box_display)
+        point_layout.addRow(self.highlight_points_check)
         self.uniform_color_button = QPushButton("단색 선택")
         self.uniform_color_button.clicked.connect(self._choose_uniform_color)
         self._update_color_button()
@@ -642,15 +679,18 @@ class MainWindow(QMainWindow):
             self._clear_pending_carry()
         self.request_generation += 1
         request = self.request_generation
-        self.status_message.setText(f"{frame_id} 불러오는 중…")
+        suffix = " · 선택 객체 추적 중" if self._pending_tracking is not None else ""
+        self.status_message.setText(f"{frame_id} 불러오는 중…{suffix}")
         self.frame_combo.setEnabled(False)
-        self._update_object_link_controls()
+        self._update_editor()
+        self._update_edit_state()
         future = self.executor.submit(
             load_frame_payload,
             self.adapter,
             self.importer,
             frame_id,
             self.repository,
+            self._pending_tracking,
         )
 
         def finish(completed: Future[FrameLoadPayload]) -> None:
@@ -681,6 +721,7 @@ class MainWindow(QMainWindow):
         recovery_status = self._offer_recovery(payload)
         carried_ids: tuple[str, ...] = ()
         carried_selection: str | None = None
+        tracking_message = ""
         if (
             recovery_status != "restored"
             and self.carry_forward_check.isChecked()
@@ -691,6 +732,17 @@ class MainWindow(QMainWindow):
                 payload.label, self._pending_carried_objects
             )
             self.history.apply(merged)
+            tracking = payload.tracking_result
+            if (
+                tracking is not None and self._pending_tracking is not None
+                and tracking.target_frame_id == payload.source.frame_id
+                and tracking.object_id == self._pending_tracking.obj.id
+                and tracking.source_frame_id == self._pending_tracking.source_frame_id
+            ):
+                tracking_message = tracking.message
+                if tracking.object_id in carried_ids:
+                    # Separate undo step: first Undo restores the unchanged carried box.
+                    self.history.apply(apply_tracking_result(merged, tracking))
             available_ids = {obj.id for obj in merged.objects}
             if self._pending_carried_selection in available_ids:
                 carried_selection = self._pending_carried_selection
@@ -728,6 +780,7 @@ class MainWindow(QMainWindow):
             f"{len(current_label.objects)} objects"
             + (f" · 새 박스 {len(carried_ids)}개 이어받음" if carried_ids else "")
             + (" · 복구본 복원됨" if recovery_status == "restored" else "")
+            + (f" · 추적: {tracking_message}" if tracking_message else "")
         )
         warning_messages = [
             f"{name}: {message}" for name, message in payload.sensor_errors.items()
@@ -906,7 +959,8 @@ class MainWindow(QMainWindow):
             self.frame_combo.setCurrentText(self.payload.source.frame_id)
             self.frame_combo.blockSignals(False)
         self._clear_pending_carry()
-        self._update_object_link_controls()
+        self._update_editor()
+        self._update_edit_state()
         self.status_message.setText(f"{frame_id} 로드 실패 — {message}")
 
     def _populate_cameras(self, payload: FrameLoadPayload) -> None:
@@ -971,6 +1025,7 @@ class MainWindow(QMainWindow):
         if self.side_visible_check.isChecked():
             self._render_side_clouds(clouds)
         self._render_detail()
+        self._render_point_selection()
         self._update_status_badge()
 
     def _render_bev_clouds(
@@ -1021,6 +1076,16 @@ class MainWindow(QMainWindow):
             )
         if render_detail:
             self._render_detail()
+        self._render_point_selection()
+
+    def _render_point_selection(self) -> None:
+        selected = self._selected_object()
+        box = selected.box3d if selected is not None and self.highlight_points_check.isChecked() else None
+        self.view_3d.set_selected_box(box)
+        if self.bev_visible_check.isChecked():
+            self.bev_view.set_selected_box(box)
+        if self.side_visible_check.isChecked():
+            self.side_view.set_selected_box(box)
 
     def _render_detail(self) -> None:
         if self.payload is None:
@@ -1036,6 +1101,7 @@ class MainWindow(QMainWindow):
             box_line_width=self.box_line_width_spin.value(),
             reset_view=self._detail_reset_requested,
             show_labels=self.object_labels_check.isChecked(),
+            highlight_selected=self.highlight_points_check.isChecked(),
         )
         self._detail_reset_requested = False
         if selected is None:
@@ -1245,7 +1311,9 @@ class MainWindow(QMainWindow):
     def _update_editor(self, selected: LabeledObject | None = None) -> None:
         if selected is None:
             selected = self._selected_object()
-        enabled = selected is not None
+        enabled = selected is not None and self.frame_combo.isEnabled()
+        self.create_button.setEnabled(self.frame_combo.isEnabled())
+        self.object_list.setEnabled(self.frame_combo.isEnabled())
         self._update_object_link_controls()
         self._updating_editor = True
         try:
@@ -1365,7 +1433,7 @@ class MainWindow(QMainWindow):
         width: float | None = None,
     ) -> None:
         label = self._current_label()
-        if label is None:
+        if label is None or not self.frame_combo.isEnabled():
             return
         class_name = self.new_class_combo.currentText() or str(
             self.config["classes"][0]["name"]
@@ -1434,6 +1502,7 @@ class MainWindow(QMainWindow):
         )
 
     def _update_object_link_controls(self) -> None:
+        self._update_tracking_controls()
         label = self._current_label()
         selected = self._selected_object()
         ready = label is not None and self.frame_combo.isEnabled()
@@ -1467,6 +1536,28 @@ class MainWindow(QMainWindow):
                 f"{reference.obj.class_name} · {reference.obj.id[:12]}"
             )
             self.link_reference_label.setToolTip(f"기준 객체 ID: {reference.obj.id}")
+
+    def _update_tracking_controls(self, *_: Any) -> None:
+        ready = self._current_label() is not None and self.frame_combo.isEnabled()
+        enabled = ready and self.carry_forward_check.isChecked()
+        self.tracking_check.setEnabled(enabled)
+        tracking = enabled and self.tracking_check.isChecked()
+        self.tracking_z_check.setEnabled(tracking)
+        self.tracking_distance_spin.setEnabled(tracking)
+        selected_id = self._selected_id()
+        self.ground_tracking_check.blockSignals(True)
+        self.ground_tracking_check.setChecked(selected_id in self._ground_tracking_ids)
+        self.ground_tracking_check.blockSignals(False)
+        self.ground_tracking_check.setEnabled(tracking and self.tracking_z_check.isChecked() and selected_id is not None)
+
+    def _set_ground_tracking(self, enabled: bool) -> None:
+        selected_id = self._selected_id()
+        if selected_id is None or not self.frame_combo.isEnabled():
+            return
+        if enabled:
+            self._ground_tracking_ids.add(selected_id)
+        else:
+            self._ground_tracking_ids.discard(selected_id)
 
     def _remember_selected_object(self) -> None:
         label = self._current_label()
@@ -1578,7 +1669,7 @@ class MainWindow(QMainWindow):
         )
 
     def _apply_edited_label(self, label: FrameLabel, selected_id: str | None) -> None:
-        if self.history is None or not self.history.apply(label):
+        if not self.frame_combo.isEnabled() or self.history is None or not self.history.apply(label):
             return
         self._refresh_after_edit(selected_id)
 
@@ -1598,6 +1689,8 @@ class MainWindow(QMainWindow):
         self._update_edit_state()
 
     def _select_object_id(self, object_id: object) -> None:
+        if not self.frame_combo.isEnabled():
+            return
         if object_id is None:
             self.object_list.clearSelection()
             self.object_list.setCurrentRow(-1)
@@ -1610,14 +1703,14 @@ class MainWindow(QMainWindow):
                 return
 
     def _undo(self, *_: Any) -> None:
-        if self.history is None or not self.history.can_undo:
+        if not self.frame_combo.isEnabled() or self.history is None or not self.history.can_undo:
             return
         selected_id = self._selected_id()
         self.history.undo()
         self._refresh_after_edit(selected_id)
 
     def _redo(self, *_: Any) -> None:
-        if self.history is None or not self.history.can_redo:
+        if not self.frame_combo.isEnabled() or self.history is None or not self.history.can_redo:
             return
         selected_id = self._selected_id()
         self.history.redo()
@@ -1634,10 +1727,11 @@ class MainWindow(QMainWindow):
             status_text = "변경 없음"
         self.edit_status.setText(status_text)
         self.edit_status.setStyleSheet("color:#d97706;" if dirty else "color:#6b7280;")
-        self.save_button.setEnabled(dirty or not working_exists)
+        ready = self.frame_combo.isEnabled()
+        self.save_button.setEnabled(ready and (dirty or not working_exists))
         self.save_button.setText("작업 라벨 생성" if not working_exists else "저장")
-        self.undo_button.setEnabled(bool(self.history and self.history.can_undo))
-        self.redo_button.setEnabled(bool(self.history and self.history.can_redo))
+        self.undo_button.setEnabled(ready and bool(self.history and self.history.can_undo))
+        self.redo_button.setEnabled(ready and bool(self.history and self.history.can_redo))
         self.setWindowTitle(f"{'* ' if dirty else ''}{self.base_window_title}")
         self._update_frame_summary()
         self._update_status_badge()
@@ -1860,20 +1954,40 @@ class MainWindow(QMainWindow):
                 self.class_combo.setCurrentText(class_name)
 
     def _move_frame(self, delta: int) -> None:
+        if not self.frame_combo.isEnabled():
+            return
         target = min(max(self.frame_combo.currentIndex() + delta, 0), self.frame_combo.count() - 1)
         if target != self.frame_combo.currentIndex():
             if delta == 1 and self.carry_forward_check.isChecked():
+                self._clear_pending_carry()
                 label = self._current_label()
                 self._pending_carry_target = self.frame_combo.itemText(target)
                 self._pending_carried_objects = (
                     created_objects(label.objects) if label is not None else ()
                 )
                 self._pending_carried_selection = self._selected_id()
+                selected = self._selected_object()
+                if self.tracking_check.isChecked() and selected is not None and label is not None:
+                    if not any(obj.id == selected.id for obj in self._pending_carried_objects):
+                        self._pending_carried_objects += (selected,)
+                    self._pending_tracking = TrackingRequest(
+                        label.dataset_id, label.frame_id, self._pending_carry_target,
+                        label.reference_frame, tuple(sorted(label.point_cloud_paths)), deepcopy(selected),
+                        tuple(self._active_clouds()),
+                        TrackingOptions(
+                            max_distance_m=self.tracking_distance_spin.value(),
+                            adjust_z=self.tracking_z_check.isChecked(),
+                            ground_contact=selected.id in self._ground_tracking_ids,
+                        ),
+                    )
             else:
                 self._clear_pending_carry()
             self.frame_combo.setCurrentIndex(target)
 
     def _clear_pending_carry(self) -> None:
+        if self._pending_tracking is not None:
+            self._pending_tracking.cancel.set()
+        self._pending_tracking = None
         self._pending_carry_target = None
         self._pending_carried_objects = ()
         self._pending_carried_selection = None
@@ -1883,6 +1997,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self._closing = True
+        self._clear_pending_carry()
         if self._application_event_filter_installed:
             application = QApplication.instance()
             if application is not None:

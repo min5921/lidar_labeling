@@ -11,7 +11,7 @@ from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.geometry.box3d import side_rectangle
 from lidar_label_tool.geometry.box_edit import move_box_z, resize_box_height
 from lidar_label_tool.ui.colors import class_color
-from lidar_label_tool.ui.render_cache import PointCloudRenderCache
+from lidar_label_tool.ui.render_cache import PointCloudRenderCache, RenderCloudArrays, selected_render_points
 from lidar_label_tool.ui.views.bev_view import _brushes
 
 
@@ -33,6 +33,13 @@ class SideView(pg.PlotWidget):
         self.setLabel("bottom", "x forward", units="m")
         self.setLabel("left", "z up", units="m")
         self._point_items: list[Any] = []
+        self._render_clouds: tuple[RenderCloudArrays, ...] = ()
+        self._selected_point_token: tuple[object, ...] | None = None
+        self.selected_point_count = 0
+        self._selected_points_item = pg.ScatterPlotItem(pen=None, brush=_SELECTED, size=3, pxMode=True)
+        self._selected_points_item.setZValue(1)
+        self.addItem(self._selected_points_item)
+        self._point_size = 2.0
         self._box_items: list[Any] = []
         self._first_cloud = True
         self._objects: tuple[LabeledObject, ...] = ()
@@ -92,7 +99,22 @@ class SideView(pg.PlotWidget):
             self.autoRange()
             self._first_cloud = False
         self._cloud_render_token = token
+        self._render_clouds = batch.clouds
+        self._point_size = point_size
+        self._selected_point_token = None
+        self._selected_points_item.clear()
+        self.selected_point_count = 0
         return batch.rendered_point_count
+
+    def set_selected_box(self, box: Box3D | None) -> None:
+        token = (self._cloud_render_token, box)
+        if token == self._selected_point_token:
+            return
+        xyz = selected_render_points(self._render_clouds, box)
+        axis = 0 if self.plane == "xz" else 1
+        self._selected_points_item.setData(x=xyz[:, axis], y=xyz[:, 2], size=self._point_size + 1)
+        self.selected_point_count = len(xyz)
+        self._selected_point_token = token
 
     def set_boxes(
         self,

@@ -10,6 +10,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from lidar_label_tool.domain.point_cloud import PointCloudData
+from lidar_label_tool.domain.labels import Box3D
+from lidar_label_tool.geometry.point_selection import points_in_box
 from lidar_label_tool.ui.colors import point_rgba
 
 
@@ -35,6 +37,14 @@ class RenderCloudBatch:
     token: tuple[object, ...]
     loaded_point_count: int
     rendered_point_count: int
+
+
+def selected_render_points(clouds: Iterable[RenderCloudArrays], box: Box3D | None) -> NDArray[np.float32]:
+    """Crop displayed points for a small 2D overlay, never reload or recolor the full cloud."""
+    if box is None:
+        return np.empty((0, 3), dtype=np.float32)
+    parts = [cloud.xyz[points_in_box(cloud.xyz, box)] for cloud in clouds]
+    return np.concatenate(parts) if parts else np.empty((0, 3), dtype=np.float32)
 
 
 @dataclass(slots=True)

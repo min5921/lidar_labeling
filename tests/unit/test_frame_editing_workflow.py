@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from lidar_label_tool.app.config import default_config_path
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
+from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.ui.main_window import MainWindow
 from lidar_label_tool.ui.object_transfer_dialog import ObjectTransferDialog
 from lidar_label_tool.workers.frame_loader import load_frame_payload
@@ -309,3 +310,118 @@ def test_cancelled_or_stale_import_does_not_modify_current_label(window, tmp_pat
     assert window.history.current == before
     assert not window.history.dirty
     assert warning.call_count == (0 if mode == "cancel" else 1)
+
+
+def _tracking_scene(window):
+    rng = np.random.default_rng(8)
+    box = Box3D(10, 2, 3.5, 2, 0.25, 1, 0)
+    xyz = (rng.uniform(-0.45, 0.45, (550, 3)) * [2, 0.25, 1] + [10, 2, 3.5]).astype(np.float32)
+    cloud = PointCloudData(xyz, {}, "aeva", "1", window.history.current.reference_frame, window.dataset_root / "test.bin")
+    obj = LabeledObject("tracked", "car", box, attributes={"name": "elevated board"}, source={"raw": {"keep": True}})
+    window.payload = replace(window.payload, clouds={"aeva": (cloud,)})
+    window._apply_edited_label(replace(window.history.current, objects=(obj,)), obj.id)
+    return obj, cloud
+
+
+def test_next_frame_tracking_is_undoable_and_preserves_suspended_object(window):
+    obj, cloud = _tracking_scene(window)
+    window.tracking_check.setChecked(True)
+    assert not window.ground_tracking_check.isChecked()
+    expected_views = _set_custom_views(window)
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1.1, -0.5, 0.18])):
+        window._move_frame(1)
+    tracked = window._selected_object()
+    assert tracked.id == obj.id
+    assert tracked.box3d.x == pytest.approx(obj.box3d.x + 1.1, abs=0.15)
+    assert tracked.box3d.z == pytest.approx(obj.box3d.z + 0.18, abs=0.15)
+    assert tracked.box3d.height == obj.box3d.height
+    assert tracked.source == obj.source
+    assert "추적" in window.status_message.text()
+    _assert_views_equal(window, expected_views)
+    window._undo()
+    assert window._selected_object().box3d == obj.box3d
+    window._redo()
+    assert window._selected_object() == tracked
+    assert window._save_working_label()
+    saved = window.repository.load("000001")
+    assert saved.objects[0].box3d == tracked.box3d
+    assert saved.objects[0].extra_fields["tracking_history"][-1]["ground_contact"] is False
+
+
+def test_ground_tracking_is_remembered_per_object_not_shared_with_next_selection(window):
+    obj, _ = _tracking_scene(window)
+    other = replace(obj, id="other-board")
+    window._apply_edited_label(replace(window.history.current, objects=(obj, other)), obj.id)
+    window.tracking_check.setChecked(True)
+    window.ground_tracking_check.setChecked(True)
+    assert obj.id in window._ground_tracking_ids
+    window._select_object_id(other.id)
+    assert not window.ground_tracking_check.isChecked()
+    window._select_object_id(obj.id)
+    assert window.ground_tracking_check.isChecked()
+    window.ground_tracking_check.setChecked(False)
+    assert obj.id not in window._ground_tracking_ids
+
+
+def test_pending_tracking_can_be_cancelled_and_cannot_apply_to_a_later_frame(window):
+    _, cloud = _tracking_scene(window)
+    window.tracking_check.setChecked(True)
+    with patch.object(window.executor, "submit", return_value=Future()):
+        window._move_frame(1)
+    request = window._pending_tracking
+    generation = window.request_generation
+    assert request is not None
+    before = window.history.current
+    window._nudge_selected("z", 1)
+    window._undo()
+    assert window.history.current == before
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=replace(cloud, xyz=cloud.xyz + [1, 0, 0])):
+        payload = load_frame_payload(window.adapter, window.importer, "000001", window.repository, request)
+    with patch.object(window.executor, "submit", return_value=Future()):
+        window._request_frame("000002")
+    assert request.cancel.is_set()
+    window._accept_frame(generation, payload)
+    assert window.payload.source.frame_id == "000000"
+    assert window.history.current == before
+    window._show_load_error(window.request_generation, "000002", "cancelled test")
+
+
+def test_highlight_checkbox_and_box_move_update_all_visible_views(window):
+    obj, _ = _tracking_scene(window)
+    window.bev_visible_check.setChecked(True)
+    window.side_visible_check.setChecked(True)
+    window._render_all()
+    for view in (window.view_3d, window.bev_view, window.side_view, window.detail_view):
+        assert view.selected_point_count > 0
+    window.highlight_points_check.setChecked(False)
+    for view in (window.view_3d, window.bev_view, window.side_view, window.detail_view):
+        assert view.selected_point_count == 0
+    window.highlight_points_check.setChecked(True)
+    window._apply_edited_label(replace(window.history.current, objects=(replace(obj, box3d=replace(obj.box3d, z=10)),)), obj.id)
+    for view in (window.view_3d, window.bev_view, window.side_view, window.detail_view):
+        assert view.selected_point_count == 0
+
+
+def test_tracking_save_cancel_leaves_original_frame_and_does_not_start_worker(window):
+    obj, _ = _tracking_scene(window)
+    window.tracking_check.setChecked(True)
+    with (
+        patch.object(window, "_resolve_dirty_before_leave", return_value=False),
+        patch.object(window.executor, "submit") as submit,
+    ):
+        window._move_frame(1)
+        submit.assert_not_called()
+    assert window.frame_combo.currentText() == "000000"
+    assert window._selected_object().box3d == obj.box3d
+    assert window._pending_tracking is None
+
+
+def test_tracking_worker_failure_keeps_carried_box_and_frame_usable(window):
+    obj, _ = _tracking_scene(window)
+    window.tracking_check.setChecked(True)
+    with patch("lidar_label_tool.workers.frame_loader.track_object", side_effect=RuntimeError("tracking failure")):
+        window._move_frame(1)
+    assert window.payload.source.frame_id == "000001"
+    assert window._selected_object().box3d == obj.box3d
+    assert window.frame_combo.isEnabled()
+    assert "추적 계산 실패" in window.status_message.text()

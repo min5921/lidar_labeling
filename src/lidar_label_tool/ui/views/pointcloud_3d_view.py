@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QLabel
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.geometry.box3d import box_corners_3d
-from lidar_label_tool.ui.colors import class_color
-from lidar_label_tool.ui.render_cache import PointCloudRenderCache
+from lidar_label_tool.ui.colors import class_color, selected_point_colors
+from lidar_label_tool.ui.render_cache import PointCloudRenderCache, RenderCloudArrays
 
 
 _BOX_EDGES = (
@@ -33,7 +33,10 @@ class PointCloud3DView(gl.GLViewWidget):
         self._cloud_render_token: tuple[object, ...] | None = None
         self.setBackgroundColor((18, 20, 24))
         self.setCameraPosition(distance=45, elevation=28, azimuth=-90)
-        self._point_items: list[object] = []
+        self._point_items: list[Any] = []
+        self._render_clouds: tuple[RenderCloudArrays, ...] = ()
+        self._selected_point_token: tuple[object, ...] | None = None
+        self.selected_point_count = 0
         self._box_items: list[object] = []
         self._objects: tuple[LabeledObject, ...] = ()
         self._mouse_press_position: tuple[float, float] | None = None
@@ -87,7 +90,21 @@ class PointCloud3DView(gl.GLViewWidget):
             self.addItem(item)
             self._point_items.append(item)
         self._cloud_render_token = token
+        self._render_clouds = batch.clouds
+        self._selected_point_token = None
+        self.selected_point_count = 0
         return batch.rendered_point_count
+
+    def set_selected_box(self, box: Box3D | None) -> None:
+        token = (self._cloud_render_token, box)
+        if token == self._selected_point_token:
+            return
+        self.selected_point_count = 0
+        for item, cloud in zip(self._point_items, self._render_clouds):
+            colors, count = selected_point_colors(cloud.xyz, cloud.rgba, box)
+            item.setData(color=colors)
+            self.selected_point_count += count
+        self._selected_point_token = token
 
     def set_boxes(
         self,

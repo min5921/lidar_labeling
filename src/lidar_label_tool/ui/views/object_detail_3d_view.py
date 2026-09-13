@@ -9,7 +9,7 @@ import pyqtgraph.opengl as gl
 
 from lidar_label_tool.domain.labels import Box3D, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
-from lidar_label_tool.ui.colors import point_rgba
+from lidar_label_tool.ui.colors import point_rgba, selected_point_colors
 from lidar_label_tool.ui.views.pointcloud_3d_view import PointCloud3DView
 
 
@@ -19,6 +19,7 @@ class ObjectDetail3DView(PointCloud3DView):
     def __init__(self) -> None:
         super().__init__()
         self.visible_point_count = 0
+        self.selected_point_count = 0
         self.setCameraPosition(distance=12, elevation=24, azimuth=-90)
 
     def set_detail(
@@ -34,14 +35,17 @@ class ObjectDetail3DView(PointCloud3DView):
         box_line_width: float = 2.0,
         reset_view: bool = False,
         show_labels: bool = True,
+        highlight_selected: bool = True,
     ) -> int:
         self._clear_items(self._point_items)
+        self.selected_point_count = 0
         if selected is None:
             self.set_boxes(())
             self.visible_point_count = 0
             return 0
 
         box = selected.box3d
+        local_box = Box3D(0, 0, 0, box.length, box.width, box.height, 0)
         cosine = math.cos(box.yaw)
         sine = math.sin(box.yaw)
         selected_clouds: list[tuple[np.ndarray, np.ndarray]] = []
@@ -71,9 +75,14 @@ class ObjectDetail3DView(PointCloud3DView):
         for positions, colors in selected_clouds:
             if not len(positions):
                 continue
+            shown = np.ascontiguousarray(positions[::stride], dtype=np.float32)
+            shown_colors, count = selected_point_colors(
+                shown, colors[::stride], local_box if highlight_selected else None,
+            )
+            self.selected_point_count += count
             item = gl.GLScatterPlotItem(
-                pos=np.ascontiguousarray(positions[::stride], dtype=np.float32),
-                color=np.ascontiguousarray(colors[::stride]),
+                pos=shown,
+                color=np.ascontiguousarray(shown_colors),
                 size=point_size,
                 pxMode=True,
             )

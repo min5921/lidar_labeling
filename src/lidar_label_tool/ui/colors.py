@@ -4,7 +4,25 @@ from typing import Final
 
 import numpy as np
 
+from lidar_label_tool.domain.labels import Box3D
 from lidar_label_tool.domain.point_cloud import PointCloudData
+from lidar_label_tool.geometry.point_selection import points_in_box
+
+
+SELECTED_POINT_RGBA: Final = (1.0, 230 / 255, 15 / 255, 1.0)
+
+
+def selected_point_colors(xyz: np.ndarray, rgba: np.ndarray, box: Box3D | None) -> tuple[np.ndarray, int]:
+    """Color displayed points inside the selected 3D box; keep base/source arrays intact."""
+    if box is None:
+        return rgba, 0
+    mask = points_in_box(xyz, box)
+    count = int(np.count_nonzero(mask))
+    if not count:
+        return rgba, 0
+    colors = rgba.copy()
+    colors[mask] = SELECTED_POINT_RGBA
+    return colors, count
 
 
 SENSOR_COLORS: Final[dict[str, tuple[float, float, float, float]]] = {
