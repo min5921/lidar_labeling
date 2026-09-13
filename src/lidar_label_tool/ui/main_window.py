@@ -9,7 +9,7 @@ from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QKeyEvent, QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -349,6 +349,7 @@ class MainWindow(QMainWindow):
         self.ground_tracking_check.setToolTip(
             "차량·사람 등 지면에 붙은 객체만 켜세요. 표지판은 끄고 포인트 이동량으로 추적합니다. "
             "이 설정은 현재 실행에서 객체 ID별로 기억하며 다음 프레임 추적에 적용됩니다. "
+            "확인된 지면에서는 B 키와 같은 포인트 바닥 기준을 사용합니다. "
             "지면이 불확실하면 기존 z를 유지합니다."
         )
         nav_layout.addWidget(self.ground_tracking_check)
@@ -581,7 +582,7 @@ class MainWindow(QMainWindow):
         help_text = QLabel(
             "1. 객체 목록·전체 3D·BEV 박스를 클릭해 선택\n"
             "2. W/S: 앞뒤 · A/D: 좌우 · Q/E: 회전\n"
-            "3. Space/Ctrl 단독: 위/아래 · R/F: 길이 · T/G: 폭 · Y/H: 높이\n"
+            "3. Space: 위 · Ctrl만 눌렀다 놓기: 아래 · R/F: 길이 · T/G: 폭 · Y/H: 높이\n"
             "4. ←/→: 이전/다음 프레임\n"
             "5. ‘새 박스 만들기’ 후 열린 BEV에서 위치 클릭\n"
             "6. B: 포인트 바닥 맞춤\n"
@@ -669,20 +670,24 @@ class MainWindow(QMainWindow):
             QEvent.Type.KeyRelease,
             QEvent.Type.ShortcutOverride,
         }:
-            targets_window = isinstance(watched, QWidget) and watched.window() is self
+            if not isinstance(watched, QWidget):
+                # Native QWindow events are forwarded to QWidget next. Handling
+                # their release here would clear the pending tap before it arrives.
+                return super().eventFilter(watched, event)
+            targets_window = watched.window() is self
             if event.key() == Qt.Key.Key_Control:
-                if (
-                    event_type == QEvent.Type.KeyPress
-                    and targets_window
-                    and not event.isAutoRepeat()
-                ):
-                    self._control_only_pending = True
-                elif event_type == QEvent.Type.KeyRelease:
-                    move_down = (
-                        targets_window
-                        and self._control_only_pending
-                        and not event.isAutoRepeat()
+                if event.isAutoRepeat():
+                    return super().eventFilter(watched, event)
+                if event_type == QEvent.Type.KeyPress and targets_window:
+                    self._control_only_pending = (
+                        event.modifiers() in (
+                            Qt.KeyboardModifier.NoModifier,
+                            Qt.KeyboardModifier.ControlModifier,
+                        )
+                        and QApplication.mouseButtons() == Qt.MouseButton.NoButton
                     )
+                elif event_type == QEvent.Type.KeyRelease:
+                    move_down = targets_window and self._control_only_pending
                     self._control_only_pending = False
                     if move_down:
                         self._nudge_selected("z", -1.0)
@@ -691,13 +696,16 @@ class MainWindow(QMainWindow):
                 QEvent.Type.ShortcutOverride,
             }:
                 self._control_only_pending = False
+        elif event_type == QEvent.Type.MouseMove:
+            # Hover is harmless; only a drag makes Ctrl a pointer modifier.
+            if not isinstance(event, QMouseEvent) or event.buttons() != Qt.MouseButton.NoButton:
+                self._control_only_pending = False
         elif event_type in {
             QEvent.Type.ApplicationDeactivate,
             QEvent.Type.WindowDeactivate,
             QEvent.Type.MouseButtonPress,
             QEvent.Type.MouseButtonRelease,
             QEvent.Type.MouseButtonDblClick,
-            QEvent.Type.MouseMove,
             QEvent.Type.Wheel,
             QEvent.Type.TabletPress,
             QEvent.Type.TabletMove,

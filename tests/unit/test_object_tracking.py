@@ -6,7 +6,7 @@ import pytest
 
 from lidar_label_tool.domain.labels import Box3D, FrameLabel, LabeledObject
 from lidar_label_tool.domain.point_cloud import PointCloudData
-from lidar_label_tool.geometry.box_fit import fit_box_to_local_ground
+from lidar_label_tool.geometry.box_fit import fit_box_bottom_to_points, fit_box_to_local_ground
 from lidar_label_tool.services.object_tracking import (
     TrackingOptions,
     TrackingRequest,
@@ -66,9 +66,10 @@ def test_tracks_translation_and_z_without_changing_size_or_snapping_sign_to_grou
         assert result.box.z - result.box.height / 2 > 2.5
 
 
-def test_z_adjustment_can_be_disabled():
+@pytest.mark.parametrize("ground_contact", [False, True])
+def test_z_adjustment_can_be_disabled(ground_contact):
     request, target, clouds = scene(shift=(1.1, -0.5, 0))
-    request = replace(request, options=TrackingOptions(adjust_z=False))
+    request = replace(request, options=TrackingOptions(adjust_z=False, ground_contact=ground_contact))
     result = track_object(request, target, clouds)
     assert result.status == "matched", result
     assert result.box.z == request.obj.box3d.z
@@ -115,7 +116,7 @@ def test_local_ground_requires_supported_nearby_plane():
     points = np.column_stack((x.ravel(), y.ravel(), 0.1 * x.ravel() + 0.15))
     fitted = fit_box_to_local_ground(box, (cloud(points),))
     assert fitted is not None
-    assert fitted.z == pytest.approx(0.95, abs=0.03)
+    assert fitted == fit_box_bottom_to_points(box, (cloud(points),))
     assert fitted.height == box.height
     assert fit_box_to_local_ground(box, (cloud(points[:3]),)) is None
     assert fit_box_to_local_ground(box, (cloud(points + [0, 0, 4]),)) is None

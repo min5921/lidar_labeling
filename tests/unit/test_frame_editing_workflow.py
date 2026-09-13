@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeyEvent, QKeySequence, QMouseEvent, QVector3D, QWheelEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from lidar_label_tool.app.config import default_config_path
@@ -363,6 +364,50 @@ def test_ground_tracking_is_remembered_per_object_not_shared_with_next_selection
     assert obj.id not in window._ground_tracking_ids
 
 
+def test_auto_ground_then_b_does_not_lower_box_or_add_an_undo_step(window):
+    from lidar_label_tool.geometry.box_fit import fit_box_bottom_to_points
+    from tests.unit.test_object_tracking import scene
+
+    request, _, target_clouds = scene(ground=True)
+
+    def on_slope(cloud):
+        xyz = cloud.xyz.copy()
+        xyz[:, 2] += 0.03 * (xyz[:, 0] - request.obj.box3d.x)
+        return replace(cloud, xyz=xyz, source_frame=window.history.current.reference_frame)
+
+    source_cloud = on_slope(request.clouds[0])
+    target_cloud = on_slope(target_clouds[0])
+    source_before, target_before = source_cloud.xyz.copy(), target_cloud.xyz.copy()
+    original_box = fit_box_bottom_to_points(request.obj.box3d, (source_cloud,))
+    assert original_box is not None
+    obj = replace(request.obj, box3d=original_box)
+    window.payload = replace(window.payload, clouds={"aeva": (source_cloud,)})
+    window._apply_edited_label(replace(window.history.current, objects=(obj,)), obj.id)
+    window.tracking_check.setChecked(True)
+    window.ground_tracking_check.setChecked(True)
+
+    with patch.object(window.adapter, "load_cloud_from_source", return_value=target_cloud):
+        window._move_frame(1)
+
+    assert window.payload.tracking_result.ground_applied
+    tracked = window._selected_object()
+    assert tracked.id == obj.id
+    assert tracked.box3d.x == pytest.approx(obj.box3d.x + 1.1, abs=0.15)
+    assert tracked.box3d == fit_box_bottom_to_points(tracked.box3d, (target_cloud,))
+    shortcut = next(s for s in window.shortcuts if s.key() == QKeySequence(Qt.Key.Key_B))
+    for _ in range(2):
+        shortcut.activated.emit()
+        assert window._selected_object() == tracked
+    window._undo()
+    assert window._selected_object().box3d == original_box
+    window._redo()
+    assert window._selected_object() == tracked
+    assert window._save_working_label()
+    assert window.repository.load("000001").objects[0] == tracked
+    np.testing.assert_array_equal(source_cloud.xyz, source_before)
+    np.testing.assert_array_equal(target_cloud.xyz, target_before)
+
+
 def test_pending_tracking_can_be_cancelled_and_cannot_apply_to_a_later_frame(window):
     _, cloud = _tracking_scene(window)
     window.tracking_check.setChecked(True)
@@ -434,6 +479,121 @@ def _control_event(event_type):
         else Qt.KeyboardModifier.NoModifier
     )
     return QKeyEvent(event_type, Qt.Key.Key_Control, modifiers)
+
+
+@pytest.mark.parametrize("hover", [False, True])
+def test_native_control_release_lowers_box_once_and_round_trips(window, hover):
+    window._create_box(1, 2)
+    original = window._selected_object()
+    window.move_step_spin.setValue(0.25)
+    # Native key events visit QWindow before being forwarded to its QWidget.
+    # Sending directly to a QWidget misses that real keyboard delivery path.
+    window.winId()
+    handle = window.windowHandle()
+    with patch.object(QApplication, "focusWidget", return_value=window.view_3d):
+        QTest.keyPress(handle, Qt.Key.Key_Control)
+        assert window._selected_object() == original
+        if hover:
+            move = QMouseEvent(
+                QEvent.Type.MouseMove, QPointF(30, 30), QPointF(30, 30),
+                Qt.MouseButton.NoButton, Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            QApplication.sendEvent(window.view_3d, move)
+        QTest.keyRelease(handle, Qt.Key.Key_Control)
+    lowered = replace(original, box3d=replace(original.box3d, z=original.box3d.z - 0.25))
+    assert window._selected_object() == lowered
+    window._undo()
+    assert window._selected_object() == original
+    window._redo()
+    assert window._selected_object() == lowered
+    assert window._save_working_label()
+    assert window.repository.load("000000").objects == (lowered,)
+    window._request_frame("000000")
+    assert window._selected_object() == lowered
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_S, Qt.Key.Key_Z, Qt.Key.Key_Y, Qt.Key.Key_Shift])
+def test_native_control_chord_does_not_lower_box(window, key):
+    window.winId()
+    handle = window.windowHandle()
+    with patch.object(window, "_nudge_selected") as nudge:
+        QTest.keyPress(handle, Qt.Key.Key_Control)
+        # A registered Qt shortcut may consume KeyPress, leaving only this event.
+        QApplication.sendEvent(handle, QKeyEvent(
+            QEvent.Type.ShortcutOverride, key, Qt.KeyboardModifier.ControlModifier,
+        ))
+        QTest.keyRelease(handle, Qt.Key.Key_Control)
+    nudge.assert_not_called()
+
+
+@pytest.mark.parametrize("chord", [False, True])
+def test_repeated_control_events_preserve_tap_or_cancelled_chord_until_final_release(window, chord):
+    window.winId()
+    handle = window.windowHandle()
+    with patch.object(window, "_nudge_selected") as nudge:
+        QTest.keyPress(handle, Qt.Key.Key_Control)
+        if chord:
+            QApplication.sendEvent(handle, QKeyEvent(
+                QEvent.Type.ShortcutOverride, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier,
+            ))
+        for event_type in (QEvent.Type.KeyRelease, QEvent.Type.KeyPress):
+            QApplication.sendEvent(handle, QKeyEvent(
+                event_type, Qt.Key.Key_Control, Qt.KeyboardModifier.ControlModifier, "", True,
+            ))
+        nudge.assert_not_called()
+        QTest.keyRelease(handle, Qt.Key.Key_Control)
+        if chord:
+            nudge.assert_not_called()
+        else:
+            nudge.assert_called_once_with("z", -1.0)
+
+
+@pytest.mark.parametrize("event_type", [
+    QEvent.Type.ApplicationDeactivate, QEvent.Type.WindowDeactivate,
+])
+def test_native_control_does_not_lower_box_after_deactivation(window, event_type):
+    window.winId()
+    handle = window.windowHandle()
+    with patch.object(window, "_nudge_selected") as nudge:
+        QTest.keyPress(handle, Qt.Key.Key_Control)
+        QApplication.sendEvent(handle, QEvent(event_type))
+        QTest.keyRelease(handle, Qt.Key.Key_Control)
+    nudge.assert_not_called()
+
+
+def test_native_control_does_not_edit_box_while_text_input_has_focus(window):
+    window._create_box(1, 2)
+    original = window._selected_object()
+    window.winId()
+    with patch.object(QApplication, "focusWidget", return_value=window.frame_combo):
+        QTest.keyClick(window.windowHandle(), Qt.Key.Key_Control)
+    assert window._selected_object() == original
+
+
+@pytest.mark.parametrize("modifiers", [
+    Qt.KeyboardModifier.ShiftModifier,
+    Qt.KeyboardModifier.AltModifier,
+    Qt.KeyboardModifier.MetaModifier,
+])
+def test_control_with_an_already_held_modifier_is_not_control_alone(window, modifiers):
+    with patch.object(window, "_nudge_selected") as nudge:
+        QApplication.sendEvent(window.view_3d, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Control,
+            modifiers | Qt.KeyboardModifier.ControlModifier,
+        ))
+        QApplication.sendEvent(window.view_3d, _control_event(QEvent.Type.KeyRelease))
+    nudge.assert_not_called()
+
+
+def test_control_with_an_already_held_mouse_button_does_not_lower_box(window):
+    with (
+        patch.object(window, "_nudge_selected") as nudge,
+        patch.object(QApplication, "mouseButtons", return_value=Qt.MouseButton.LeftButton),
+    ):
+        QApplication.sendEvent(window.view_3d, _control_event(QEvent.Type.KeyPress))
+        QApplication.sendEvent(window.view_3d, _control_event(QEvent.Type.KeyRelease))
+    nudge.assert_not_called()
 
 
 def test_control_wheel_changes_only_view_not_selected_box_z(window):

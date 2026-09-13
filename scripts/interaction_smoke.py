@@ -59,6 +59,9 @@ def main() -> int:
                 if phase == "load":
                     if window.payload is None or window.payload.source.frame_id != args.frame:
                         return
+                    # Native QTest delivery processes events; do not re-enter this
+                    # editing sequence from the polling timer while it is running.
+                    result["phase"] = "editing"
                     if window.object_list.count() == 0:
                         fail("source frame has no object to select")
                         return
@@ -108,6 +111,35 @@ def main() -> int:
                     ):
                         fail("W/R shortcuts did not move and resize the selected box")
                         return
+
+                    # Go through native QWindow delivery, not only QWidget events.
+                    # A global filter must wait for QWidget's forwarded Ctrl release.
+                    native_window = window.windowHandle()
+                    QTest.keyPress(native_window, Qt.Key.Key_Control)
+                    if window._selected_object() != moved:
+                        fail("Ctrl changed the box before the standalone key was released")
+                        return
+                    QTest.mouseMove(window.view_3d, QPoint(30, 30))
+                    QTest.keyRelease(native_window, Qt.Key.Key_Control)
+                    lowered = window._selected_object()
+                    if lowered is None or not math.isclose(
+                        lowered.box3d.z, moved.box3d.z - window.move_step_spin.value(),
+                    ):
+                        fail("native Ctrl release did not lower the selected box by one step")
+                        return
+                    QTest.keyClick(native_window, Qt.Key.Key_S, Qt.KeyboardModifier.ControlModifier)
+                    if window._selected_object() != lowered:
+                        fail("Ctrl+S unexpectedly lowered the selected box")
+                        return
+                    QTest.keyClick(native_window, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+                    if window._selected_object() != moved:
+                        fail("Ctrl+Z did not restore the standalone Ctrl step exactly")
+                        return
+                    QTest.keyClick(native_window, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
+                    if window._selected_object() != lowered:
+                        fail("Ctrl+Y did not redo the standalone Ctrl step exactly")
+                        return
+                    moved = lowered
 
                     window.bev_visible_check.setChecked(True)
                     window.bev_view.focus_on_box(moved.box3d)
@@ -353,7 +385,9 @@ def main() -> int:
         timer = QTimer()
         timer.timeout.connect(poll)
         timer.start(100)
-        QTimer.singleShot(args.timeout_ms, lambda: fail("interaction smoke timed out"))
+        QTimer.singleShot(
+            args.timeout_ms, lambda: fail(f"interaction smoke timed out ({result['phase']})"),
+        )
         app.exec()
         window.close()
 

@@ -482,6 +482,10 @@ point/image binding, provenance, calibration context와 revision은 유지한다
 length/width/height/yaw와 class/source/unknown field, frame identity·binding·revision은 바꾸지 않는다.
 z는 기본적으로 객체 포인트의 상대 이동량이고 지면 접촉을 암묵적으로 가정하지 않는다.
 지면 보정은 실행 중 객체 ID별 별도 opt-in이며 지면 근거 부족 시 이전 z를 유지한다.
+자동 지면 보정의 최종 bottom은 수동 `B`와 같은 XY footprint(여유 0.15 m)의 하위 5% z를
+사용한다. 주변 평면은 지면 지지·경사·수직 범위를 검증하는 근거이지 별도 최종 높이 기준이
+아니다. footprint 높이가 지지 평면 범위와 맞지 않거나 z 이동 한도를 넘으면 자동 적용하지
+않는다. 같은 포인트·footprint에서 자동 보정 후 수동 맞춤을 반복해도 박스 z가 달라지지 않는다.
 
 적용 근거는 선택적 object 배열 `tracking_history`에 `method: "local_point_translation"`,
 `source_frame_id`, `target_frame_id`, `delta_xyz`, `score`, `adjust_z`, `ground_contact`,

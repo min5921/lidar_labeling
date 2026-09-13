@@ -10,6 +10,10 @@ from lidar_label_tool.domain.point_cloud import PointCloudData
 from lidar_label_tool.geometry.point_selection import points_in_box
 
 
+_FLOOR_MARGIN_M = 0.15
+_GROUND_RESIDUAL_M = 0.08
+
+
 def estimate_floor_z_from_footprint(
     clouds: Iterable[PointCloudData],
     *,
@@ -18,7 +22,7 @@ def estimate_floor_z_from_footprint(
     length: float,
     width: float,
     yaw: float,
-    margin_m: float = 0.15,
+    margin_m: float = _FLOOR_MARGIN_M,
     percentile: float = 5.0,
     min_points: int = 12,
 ) -> float | None:
@@ -65,7 +69,7 @@ def fit_box_bottom_to_points(
     box: Box3D,
     clouds: Iterable[PointCloudData],
     *,
-    margin_m: float = 0.15,
+    margin_m: float = _FLOOR_MARGIN_M,
     percentile: float = 5.0,
     min_points: int = 12,
 ) -> Box3D | None:
@@ -89,14 +93,18 @@ def fit_box_bottom_to_points(
 def fit_box_to_local_ground(
     box: Box3D, clouds: Iterable[PointCloudData], *, max_z_step_m: float = 0.6,
 ) -> Box3D | None:
-    """Fit z only to a supported local ground plane; never infer ground contact.
+    """Fit z to the manual point-floor reference after confirming ground support.
 
     Explicit opt-in for ground-contact objects. Reads [N,3] float32/64 points in
     the box's reference frame (meter, x forward/y left/z up). Size/yaw stay fixed.
-    Sparse, steep, poorly supported or distant planes return None, not a guess.
+    A local plane confirms support; its center height is NOT the final box floor.
+    The final z uses fit_box_bottom_to_points, so manual B cannot shift a supported
+    result again on the same clouds/footprint. Sparse, steep, inconsistent or
+    distant evidence returns None, not a guess. Cloud arrays are never modified.
     """
     if not np.isfinite(max_z_step_m) or max_z_step_m <= 0:
         raise ValueError("max_z_step_m must be positive and finite")
+    clouds = tuple(clouds)
     bottom = box.z - box.height / 2
     search = replace(box, z=bottom, height=2 * max_z_step_m, length=box.length + 1.5, width=box.width + 1.5)
     parts = [cloud.xyz[points_in_box(cloud.xyz, search)] for cloud in clouds]
@@ -124,7 +132,7 @@ def fit_box_to_local_ground(
         plane = np.linalg.solve(matrix, points[indices, 2])
         if np.linalg.norm(plane[:2]) > 0.35:
             continue
-        inliers = np.abs(design @ plane - points[:, 2]) <= 0.08
+        inliers = np.abs(design @ plane - points[:, 2]) <= _GROUND_RESIDUAL_M
         if np.count_nonzero(inliers) > np.count_nonzero(best):
             best = inliers
     if np.count_nonzero(best) < max(12, len(points) * 0.5):
@@ -142,4 +150,18 @@ def fit_box_to_local_ground(
     plane, _, rank, _ = np.linalg.lstsq(design[best], points[best, 2], rcond=None)
     if rank < 3 or np.linalg.norm(plane[:2]) > 0.35 or abs(plane[2]) > max_z_step_m:
         return None
-    return replace(box, z=box.z + float(plane[2]))
+    fitted = fit_box_bottom_to_points(box, clouds)
+    if fitted is None or abs(fitted.z - box.z) > max_z_step_m:
+        return None
+    # On slopes the low footprint percentile lies below the plane's center.
+    # Allow the plane's height range over the same yaw-oriented footprint, but
+    # reject an object underside or another vertical layer as automatic ground.
+    slope_x = plane[0] * cosine + plane[1] * sine
+    slope_y = -plane[0] * sine + plane[1] * cosine
+    height_range = (
+        abs(slope_x) * (box.length / 2 + _FLOOR_MARGIN_M)
+        + abs(slope_y) * (box.width / 2 + _FLOOR_MARGIN_M)
+    )
+    if abs(fitted.z - (box.z + plane[2])) > height_range + _GROUND_RESIDUAL_M:
+        return None
+    return fitted
